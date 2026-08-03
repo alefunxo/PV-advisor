@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Solar Advisor — is PV worth it for your home?</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <main>
+    <header class="page-header">
+      <h1>Is solar worth it for your home?</h1>
+      <p class="subtitle">
+        A quick screening estimate for anywhere in Europe. Three short steps, no sign-up.
+      </p>
+    </header>
+
+    <ol class="steps" id="stepper">
+      <li data-step="1"><span class="dot">1</span> Your home</li>
+      <li data-step="2"><span class="dot">2</span> Costs &amp; tariffs</li>
+      <li data-step="3"><span class="dot">3</span> Extras</li>
+      <li data-step="4"><span class="dot">4</span> Results</li>
+    </ol>
+
+    <form id="wizard" novalidate>
+      <!-- ---------------------------------------------------------------- Step 1 -->
+      <section class="step" data-step="1">
+        <h2>Your home</h2>
+
+        <div class="field">
+          <label for="country">Country</label>
+          <select id="country" required></select>
+        </div>
+
+        <div class="field">
+          <label for="city">Nearest town or city</label>
+          <select id="city" required></select>
+          <p class="hint">
+            Used to pick the closest point in our European sunlight map.
+          </p>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="orientation">Which way does the roof face?</label>
+            <select id="orientation">
+              <option value="0" selected>South — best</option>
+              <option value="-45">South-east</option>
+              <option value="45">South-west</option>
+              <option value="-90">East</option>
+              <option value="90">West</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="tilt">Roof steepness</label>
+            <select id="tilt">
+              <option value="0">Flat roof</option>
+              <option value="15">Shallow (15°)</option>
+              <option value="30" selected>Typical pitch (30°)</option>
+              <option value="45">Steep (45°)</option>
+            </select>
+          </div>
+        </div>
+
+        <fieldset class="sizing">
+          <legend>How big a system?</legend>
+          <div class="choice">
+            <label class="radio">
+              <input type="radio" name="sizeMode" value="area" checked />
+              I know my roof area
+            </label>
+            <label class="radio">
+              <input type="radio" name="sizeMode" value="kwp" />
+              I know the system size (kWp)
+            </label>
+          </div>
+
+          <div class="field" data-size-mode="area">
+            <label for="roofArea">Usable roof area (m²)</label>
+            <input type="number" id="roofArea" min="1" step="1" value="30" />
+            <p class="hint">Roughly the sunny part of the roof, ignoring chimneys and shading.</p>
+          </div>
+
+          <div class="field hidden" data-size-mode="kwp">
+            <label for="kwp">System size (kWp)</label>
+            <input type="number" id="kwp" min="0.5" step="0.1" value="6" />
+          </div>
+
+          <p class="derived" id="sizeDerived"></p>
+        </fieldset>
+
+        <div class="field">
+          <label for="consumption">Electricity used per year (kWh)</label>
+          <input type="number" id="consumption" min="100" step="50" value="4500" required />
+          <p class="hint">
+            It is on your annual bill. A typical European home uses 3 000–5 000 kWh.
+          </p>
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------------------- Step 2 -->
+      <section class="step hidden" data-step="2">
+        <h2>Costs &amp; tariffs</h2>
+        <p class="lead">
+          Defaults are typical values. Change any you know — your own bill is always better than
+          our guess.
+        </p>
+
+        <div class="field">
+          <label for="currency">Currency</label>
+          <select id="currency">
+            <option value="EUR">Euro (€)</option>
+            <option value="CHF">Swiss franc (CHF)</option>
+            <option value="GBP">Pound sterling (£)</option>
+            <option value="SEK">Swedish krona (SEK)</option>
+            <option value="NOK">Norwegian krone (NOK)</option>
+            <option value="DKK">Danish krone (DKK)</option>
+            <option value="PLN">Polish złoty (PLN)</option>
+            <option value="CZK">Czech koruna (CZK)</option>
+            <option value="HUF">Hungarian forint (HUF)</option>
+            <option value="RON">Romanian leu (RON)</option>
+            <option value="BGN">Bulgarian lev (BGN)</option>
+          </select>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="retailPrice">What you pay for electricity (per kWh)</label>
+            <input type="number" id="retailPrice" step="0.01" min="0" value="0.28" required />
+          </div>
+          <div class="field">
+            <label for="feedInTariff">What you are paid for exports (per kWh)</label>
+            <input type="number" id="feedInTariff" step="0.01" min="0" value="0.08" required />
+            <p class="hint">The gap between these two drives the whole battery question.</p>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="capexPerKwp">Solar system cost (per kWp, installed)</label>
+            <input type="number" id="capexPerKwp" step="10" min="0" value="1400" required />
+          </div>
+          <div class="field">
+            <label for="batteryCapexPerKwh">Battery cost (per kWh)</label>
+            <input type="number" id="batteryCapexPerKwh" step="10" min="0" value="900" required />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="batteryKwh">Battery size to test (kWh)</label>
+          <input type="number" id="batteryKwh" step="0.5" min="0" value="8" required />
+          <p class="hint">Set to 0 to skip the battery. We always show you both cases.</p>
+        </div>
+
+        <details class="advanced">
+          <summary>Financial assumptions</summary>
+          <div class="row">
+            <div class="field">
+              <label for="discountRate">Discount rate (%)</label>
+              <input type="number" id="discountRate" step="0.1" min="0" value="3" />
+            </div>
+            <div class="field">
+              <label for="lifetime">System lifetime (years)</label>
+              <input type="number" id="lifetime" step="1" min="1" value="25" />
+            </div>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="batteryLifetime">Battery lifetime (years)</label>
+              <input type="number" id="batteryLifetime" step="1" min="1" value="15" />
+            </div>
+            <div class="field">
+              <label for="roundTrip">Battery round-trip efficiency</label>
+              <input type="number" id="roundTrip" step="0.01" min="0.5" max="1" value="0.9" />
+            </div>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="performanceRatio">Performance ratio</label>
+              <input type="number" id="performanceRatio" step="0.01" min="0.5" max="1" value="0.86" />
+            </div>
+            <div class="field">
+              <label for="tariffEscalation">Yearly electricity price rise (%)</label>
+              <input type="number" id="tariffEscalation" step="0.5" min="0" value="0" />
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <!-- ---------------------------------------------------------------- Step 3 -->
+      <section class="step hidden" data-step="3">
+        <h2>Extras</h2>
+        <p class="lead">
+          Planning a heat pump, an electric car or air conditioning? Each one changes how much of
+          your own solar you can use. Turn on any that apply — or none, and go straight to your
+          results.
+        </p>
+
+        <div class="asset">
+          <label class="toggle">
+            <input type="checkbox" id="hpEnabled" />
+            <span><strong>Heat pump</strong> — heating your home with electricity</span>
+          </label>
+          <p class="hint">
+            Uses the most electricity in winter, when there is least sun. Usually the toughest
+            case for solar.
+          </p>
+          <details class="advanced" data-asset="hp">
+            <summary>Heat pump details</summary>
+            <div class="choice">
+              <label class="radio">
+                <input type="radio" name="hpMode" value="area" checked /> Estimate from my home
+              </label>
+              <label class="radio">
+                <input type="radio" name="hpMode" value="kwh" /> I know my heat demand
+              </label>
+            </div>
+            <div data-hp-mode="area">
+              <div class="row">
+                <div class="field">
+                  <label for="hpArea">Heated floor area (m²)</label>
+                  <input type="number" id="hpArea" min="10" step="5" value="140" />
+                </div>
+                <div class="field">
+                  <label for="hpStandard">Building age / insulation</label>
+                  <select id="hpStandard"></select>
+                </div>
+              </div>
+            </div>
+            <div class="field hidden" data-hp-mode="kwh">
+              <label for="hpHeatKwh">Yearly heat demand (kWh)</label>
+              <input type="number" id="hpHeatKwh" min="0" step="100" value="12000" />
+            </div>
+            <div class="field">
+              <label for="hpSupply">Heat distribution</label>
+              <select id="hpSupply">
+                <option value="35">Underfloor heating (efficient)</option>
+                <option value="45" selected>Mixed / large radiators</option>
+                <option value="55">Old radiators (less efficient)</option>
+              </select>
+            </div>
+          </details>
+        </div>
+
+        <div class="asset">
+          <label class="toggle">
+            <input type="checkbox" id="evEnabled" />
+            <span><strong>Electric car</strong> — charging at home</span>
+          </label>
+          <p class="hint">
+            Adds a lot of demand. Whether it helps your solar depends entirely on when you charge.
+          </p>
+          <details class="advanced" data-asset="ev">
+            <summary>Electric car details</summary>
+            <div class="row">
+              <div class="field">
+                <label for="evKm">Kilometres driven per year</label>
+                <input type="number" id="evKm" min="0" step="500" value="12000" />
+              </div>
+              <div class="field">
+                <label for="evEfficiency">Consumption (kWh per 100 km)</label>
+                <input type="number" id="evEfficiency" min="5" step="0.5" value="18" />
+              </div>
+            </div>
+            <div class="field">
+              <label for="evStrategy">When do you charge?</label>
+              <select id="evStrategy">
+                <option value="dumb" selected>Plug in when I get home (evening)</option>
+                <option value="solar">Charge during the day, from my own solar</option>
+              </select>
+              <p class="hint">
+                Daytime charging only helps if the car is actually parked at home on weekdays.
+                For most commuters it is not.
+              </p>
+            </div>
+          </details>
+        </div>
+
+        <div class="asset">
+          <label class="toggle">
+            <input type="checkbox" id="acEnabled" />
+            <span><strong>Air conditioning</strong> — cooling in summer</span>
+          </label>
+          <p class="hint">
+            Runs on hot, sunny afternoons — the one addition that usually fits solar well.
+          </p>
+          <details class="advanced" data-asset="ac">
+            <summary>Air conditioning details</summary>
+            <div class="row">
+              <div class="field">
+                <label for="acArea">Cooled floor area (m²)</label>
+                <input type="number" id="acArea" min="5" step="5" value="80" />
+              </div>
+              <div class="field">
+                <label for="acSeer">Efficiency (SEER)</label>
+                <input type="number" id="acSeer" min="1.5" step="0.1" value="3" />
+              </div>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <!-- ---------------------------------------------------------------- Results -->
+      <section class="step hidden" data-step="4">
+        <h2>Your results</h2>
+        <div id="verdict" class="verdict"></div>
+        <div id="results-body"></div>
+
+        <details class="advanced assumptions-panel" id="assumptions" open>
+          <summary>What this estimate assumes</summary>
+          <div id="assumptions-body"></div>
+        </details>
+      </section>
+
+      <nav class="wizard-nav">
+        <button type="button" id="backBtn" class="secondary" hidden>Back</button>
+        <button type="button" id="nextBtn">Continue</button>
+        <button type="button" id="restartBtn" class="secondary" hidden>Start again</button>
+      </nav>
+      <p class="error" id="formError" hidden></p>
+    </form>
+
+    <footer class="page-footer">
+      <p>
+        Sunlight data from <a href="https://re.jrc.ec.europa.eu/pvg_tools/en/">PVGIS</a> (European
+        Commission JRC). Place names from <a href="https://www.geonames.org/">GeoNames</a>
+        (CC&nbsp;BY&nbsp;4.0). This is a screening tool, not a quote or an engineering study.
+      </p>
+    </footer>
+  </main>
+
+  <script src="js/data/load-profiles.js"></script>
+  <script src="js/calc/pv.js"></script>
+  <script src="js/calc/climate.js"></script>
+  <script src="js/calc/dispatch.js"></script>
+  <script src="js/calc/economics.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
