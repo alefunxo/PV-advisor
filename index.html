@@ -13,6 +13,9 @@
       <p class="subtitle">
         A quick screening estimate for anywhere in Europe. Three short steps, no sign-up.
       </p>
+      <p class="mode-switch">
+        Already know roughly what you want? <a href="compare.html">Compare two systems side by side &rarr;</a>
+      </p>
     </header>
 
     <ol class="steps" id="stepper">
@@ -304,7 +307,79 @@
       <section class="step hidden" data-step="4">
         <h2>Your results</h2>
         <div id="verdict" class="verdict"></div>
+
+        <!-- One control row, above everything it scopes. Flipping an extra recomputes the
+             whole page against the *same* solar and battery system, so the change you see is
+             the extra's doing and not a resized system's. -->
+        <div class="scenario-bar">
+          <p class="scenario-bar-label" id="scenarioBarLabel">Show my results with</p>
+          <div class="scenario-toggles" role="group" aria-labelledby="scenarioBarLabel">
+            <label class="chip">
+              <input type="checkbox" id="resultHp" />
+              <span>Heat pump</span>
+            </label>
+            <label class="chip">
+              <input type="checkbox" id="resultEv" />
+              <span>Electric car</span>
+            </label>
+            <label class="chip">
+              <input type="checkbox" id="resultAc" />
+              <span>Air conditioning</span>
+            </label>
+          </div>
+          <p class="hint" id="scenarioSummary"></p>
+        </div>
+
         <div id="results-body"></div>
+
+        <div class="chart-grid">
+          <figure class="chart-card wide" id="card-monthly">
+            <figcaption>
+              <h3>Where your electricity came from, month by month</h3>
+              <p class="hint">
+                Each bar is that month's total use. Watch the winter months: the roof gives
+                least exactly when the house wants most.
+              </p>
+            </figcaption>
+            <div class="chart-frame"><canvas id="chartMonthly"></canvas></div>
+          </figure>
+
+          <figure class="chart-card" id="card-split">
+            <figcaption>
+              <h3>Where your solar output went</h3>
+              <p class="hint">Every kilowatt-hour the panels made, over a year.</p>
+            </figcaption>
+            <div class="chart-frame"><canvas id="chartSplit"></canvas></div>
+          </figure>
+
+          <figure class="chart-card" id="card-cash">
+            <figcaption>
+              <h3>Money over the system's life</h3>
+              <p class="hint">
+                The running total, starting at what you paid. It crosses zero at payback.
+              </p>
+            </figcaption>
+            <div class="chart-frame"><canvas id="chartCash"></canvas></div>
+          </figure>
+
+          <figure class="chart-card" id="card-summer">
+            <figcaption>
+              <h3 id="summerTitle">A typical July day</h3>
+              <p class="hint">Averaged across the month — a real day is spikier.</p>
+            </figcaption>
+            <div class="chart-frame"><canvas id="chartSummer"></canvas></div>
+          </figure>
+
+          <figure class="chart-card" id="card-winter">
+            <figcaption>
+              <h3 id="winterTitle">A typical January day</h3>
+              <p class="hint">The same house, the same roof, five months later.</p>
+            </figcaption>
+            <div class="chart-frame"><canvas id="chartWinter"></canvas></div>
+          </figure>
+        </div>
+
+        <div id="results-extras"></div>
 
         <details class="advanced assumptions-panel" id="assumptions" open>
           <summary>What this estimate assumes</summary>
@@ -329,11 +404,17 @@
     </footer>
   </main>
 
+  <!-- Vendored rather than loaded from a CDN: the deployed page stays self-contained, works
+       offline, and the headless smoke tests need no network. Chart.js v4.4.7, MIT. -->
+  <script src="js/vendor/chart.umd.js"></script>
   <script src="js/data/load-profiles.js"></script>
   <script src="js/calc/pv.js"></script>
   <script src="js/calc/climate.js"></script>
+  <script src="js/calc/aggregate.js"></script>
   <script src="js/calc/dispatch.js"></script>
   <script src="js/calc/economics.js"></script>
+  <script src="js/calc/scenario.js"></script>
+  <script src="js/charts.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

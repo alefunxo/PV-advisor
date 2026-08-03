@@ -16,6 +16,10 @@ const Dispatch = (() => {
   // usableCapacityKwh: usable (not nameplate) energy capacity; 0 disables the battery
   // roundTripEfficiency: applied as sqrt() on each of charge and discharge
   // maxPowerKw       : charge/discharge power limit; defaults to 0.5C
+  // buckets          : optional per-step integer group index (e.g. month of hour). When given,
+  //                    the same flows are also totalled per group and returned as `buckets`.
+  //                    Passing the grouping in rather than deriving it keeps this module free
+  //                    of any calendar assumption — see js/calc/aggregate.js for the caller.
   function simulate({
     production,
     load,
@@ -23,6 +27,7 @@ const Dispatch = (() => {
     roundTripEfficiency = 0.9,
     maxPowerKw = null,
     dtHours = 1,
+    buckets = null,
   }) {
     const n = Math.min(production.length, load.length);
     const etaOneWay = Math.sqrt(roundTripEfficiency);
@@ -38,12 +43,35 @@ const Dispatch = (() => {
     let dischargeLosses = 0;
     let throughputIn = 0; // energy stored, for cycle counting
 
+    let bucketTotals = null;
+    if (buckets) {
+      const groups = new Set();
+      for (let i = 0; i < n; i++) groups.add(buckets[i]);
+      bucketTotals = [];
+      for (let g = 0; g <= Math.max(...groups); g++) {
+        bucketTotals.push({
+          production: 0,
+          load: 0,
+          directSelfConsumed: 0,
+          batteryDischargeToLoad: 0,
+          exported: 0,
+          imported: 0,
+        });
+      }
+    }
+
     for (let i = 0; i < n; i++) {
       const p = production[i];
       const l = load[i];
+      const bucket = bucketTotals ? bucketTotals[buckets[i]] : null;
+      if (bucket) {
+        bucket.production += p;
+        bucket.load += l;
+      }
 
       const direct = Math.min(p, l);
       directSelfConsumed += direct;
+      if (bucket) bucket.directSelfConsumed += direct;
 
       let surplus = p - direct;
       let deficit = l - direct;
@@ -66,12 +94,17 @@ const Dispatch = (() => {
           soc -= drained;
           dischargeLosses += drained - delivered;
           batteryDischargeToLoad += delivered;
+          if (bucket) bucket.batteryDischargeToLoad += delivered;
           deficit -= delivered;
         }
       }
 
       exported += surplus;
       imported += deficit;
+      if (bucket) {
+        bucket.exported += surplus;
+        bucket.imported += deficit;
+      }
     }
 
     const totalProduction = production.slice(0, n).reduce((a, b) => a + b, 0);
@@ -94,6 +127,8 @@ const Dispatch = (() => {
       selfSufficiencyRate: totalLoad > 0 ? selfConsumed / totalLoad : 0,
       // Full-equivalent cycles per simulated year, for battery lifetime sanity checks.
       equivalentFullCycles: usableCapacityKwh > 0 ? throughputIn / usableCapacityKwh : 0,
+      // Same flows totalled per group, or null when no grouping was supplied.
+      buckets: bucketTotals,
     };
   }
 

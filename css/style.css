@@ -10,6 +10,20 @@
   --good: #1a7f47;
   --bad: #b4232c;
   --radius: 10px;
+
+  /* Chart series colours live here so light and dark swap in one place and js/charts.js can
+     stay written against roles. One colour per entity, reused across every chart: a reader
+     who learns "aqua is the battery" on one keeps it on the next.
+
+     These are categorical slots 1-4 of the reference palette, and the per-chart sets were run
+     through the palette validator rather than picked by eye — see the header of
+     js/charts.js for the measured separations and for why orange and yellow are never put in
+     the same plot. */
+  --c-solar: #2a78d6;
+  --c-battery: #1baf7a;
+  --c-grid: #eb6834;
+  --c-exported: #eda100;
+  --chart-gridline: #ebedf0;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -23,6 +37,14 @@
     --panel: #1c1f25;
     --good: #4cc38a;
     --bad: #f2777f;
+
+    /* Not an automatic flip: these are the same four hues re-stepped for the dark surface
+       and validated against it separately. */
+    --c-solar: #3987e5;
+    --c-battery: #199e70;
+    --c-grid: #d95926;
+    --c-exported: #c98500;
+    --chart-gridline: #23262c;
   }
 }
 
@@ -42,6 +64,13 @@ body {
 main {
   max-width: 640px;
   margin: 0 auto;
+  transition: max-width 0.2s ease;
+}
+
+/* The wizard reads best as a narrow column; the dashboard needs room for two charts abreast.
+   The class is set on the body only while the results step is showing. */
+body.results-wide main {
+  max-width: 900px;
 }
 
 h1 {
@@ -402,6 +431,22 @@ button:hover {
   font-variant-numeric: tabular-nums;
 }
 
+/* The share is the supporting figure, not the headline one. */
+.kv .share {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.kv dt.sub {
+  padding-left: 0.9rem;
+  font-size: 0.88em;
+}
+
+.kv dt.sub + dd {
+  font-weight: 400;
+  color: var(--muted);
+}
+
 .bar {
   height: 8px;
   border-radius: 4px;
@@ -414,6 +459,286 @@ button:hover {
   display: block;
   height: 100%;
   background: var(--accent);
+}
+
+/* ---- results: extras toggles ---- */
+/* One control row above everything it scopes — never a control inside a chart card, so every
+   chart on the page always shows the same scenario. */
+.scenario-bar {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+  margin-bottom: 1.25rem;
+  background: var(--panel);
+}
+
+.scenario-bar-label {
+  margin: 0 0 0.6rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.scenario-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.4rem 0.85rem 0.4rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.chip input {
+  width: auto;
+  margin: 0;
+  flex: none;
+  accent-color: var(--accent);
+}
+
+.chip:has(input:checked) {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.chip:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.scenario-bar .hint {
+  margin-top: 0.7rem;
+}
+
+/* ---- results: charts ---- */
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.chart-card {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.15rem 1.15rem;
+  min-width: 0;
+}
+
+.chart-card.wide {
+  grid-column: 1 / -1;
+}
+
+.chart-card[hidden] {
+  display: none;
+}
+
+.chart-card figcaption h3 {
+  margin: 0 0 0.3rem;
+  font-size: 1rem;
+}
+
+.chart-card figcaption .hint {
+  margin: 0 0 0.9rem;
+}
+
+/* Sized to hold the plot *and* the axis and legend bands beneath it, so the card never grows
+   its own little scrollbar. */
+.chart-frame {
+  position: relative;
+  height: 260px;
+}
+
+.chart-card.wide .chart-frame {
+  height: 320px;
+}
+
+@media (max-width: 720px) {
+  .chart-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---- comparison mode ---- */
+body.compare-mode main {
+  max-width: 1080px;
+}
+
+.mode-switch {
+  margin: 0.75rem 0 0;
+  font-size: 0.88rem;
+}
+
+.mode-switch a {
+  color: var(--accent);
+}
+
+.shared-panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.15rem 1.25rem;
+  margin-bottom: 1.5rem;
+  background: var(--panel);
+}
+
+.shared-panel h2 {
+  margin-bottom: 0.25rem;
+}
+
+.shared-panel .lead {
+  margin-bottom: 1.1rem;
+}
+
+.shared-panel details.advanced {
+  background: var(--bg);
+}
+
+.compare-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+  margin-bottom: 1.5rem;
+}
+
+.compare-col {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.15rem 1.25rem;
+  min-width: 0;
+}
+
+.compare-col > h2 {
+  margin-bottom: 1rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.col-inputs {
+  margin-bottom: 1.25rem;
+}
+
+.col-inputs .scenario-bar-label {
+  margin: 0 0 0.55rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.col-inputs .chip {
+  font-size: 0.85rem;
+  padding: 0.3rem 0.7rem 0.3rem 0.55rem;
+}
+
+.col-result .headline {
+  font-size: 1.6rem;
+}
+
+.compare-col .chart-card {
+  border: 0;
+  padding: 0;
+  margin-top: 1.25rem;
+}
+
+.compare-col .chart-frame {
+  height: 240px;
+}
+
+.col-summary {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.col-summary h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
+
+.summary-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.summary-list li {
+  margin-bottom: 0.25rem;
+}
+
+.verdict-block {
+  border-left: 4px solid var(--accent);
+}
+
+.verdict-line {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+}
+
+.delta-table {
+  font-size: 0.9rem;
+}
+
+.delta-row {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr 1fr 1fr;
+  gap: 0.5rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.delta-row span:not(:first-child) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.delta-row.head {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.delta-row.head span {
+  font-weight: 600;
+}
+
+.delta-row:last-child {
+  border-bottom: 0;
+}
+
+.delta-cell {
+  color: var(--muted);
+}
+
+@media (max-width: 860px) {
+  .compare-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .delta-row {
+    grid-template-columns: 1.4fr 1fr 1fr;
+  }
+
+  .delta-row span:nth-child(4) {
+    display: none;
+  }
 }
 
 .assumptions-panel {

@@ -98,6 +98,40 @@ const Economics = (() => {
     return Infinity;
   }
 
+  // Cumulative cash position year by year, for the payback chart. Index 0 is the moment of
+  // purchase (-capex); index y is the position after y years of operation.
+  //
+  // This is the *undiscounted* running total, deliberately: it is the line that crosses zero
+  // at the simple payback year reported next to it, and a discounted curve crossing somewhere
+  // else would read as a contradiction. The discounted verdict is the NPV figure.
+  function cumulativeCashFlow({
+    capex,
+    flows,
+    retailPrice,
+    feedInTariff,
+    lifetimeYears,
+    omPctOfCapex = 1,
+    degradationPctPerYear = 0.5,
+    tariffEscalationPct = 0,
+  }) {
+    const omAnnual = capex * (omPctOfCapex / 100);
+    const series = [-capex];
+    let cumulative = -capex;
+    for (let y = 0; y < lifetimeYears; y++) {
+      cumulative += annualCashFlow({
+        flows,
+        retailPrice,
+        feedInTariff,
+        yearIndex: y,
+        omAnnual,
+        degradationPctPerYear,
+        tariffEscalationPct,
+      });
+      series.push(cumulative);
+    }
+    return series;
+  }
+
   // The battery question is incremental, not standalone: it compares a PV+battery system
   // against the same PV system without one. The battery earns only the *extra* self-consumed
   // energy it enables (which stops being exported), so its case is driven by the retail /
@@ -128,6 +162,11 @@ const Economics = (() => {
     return {
       extraSelfConsumed,
       lostExport,
+      // The flows the battery alone is responsible for. Exposed so the payback chart can plot
+      // the battery on the same incremental basis the NPV above is computed on, rather than
+      // re-deriving it and drifting out of step.
+      incrementalFlows,
+      horizonYears: horizon,
       year1Benefit: annualCashFlow({
         flows: incrementalFlows,
         retailPrice,
@@ -161,5 +200,12 @@ const Economics = (() => {
     };
   }
 
-  return { annualCashFlow, annualBill, npv, simplePaybackYears, batteryIncrement };
+  return {
+    annualCashFlow,
+    annualBill,
+    npv,
+    simplePaybackYears,
+    cumulativeCashFlow,
+    batteryIncrement,
+  };
 })();

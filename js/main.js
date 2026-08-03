@@ -1,12 +1,24 @@
-// Wizard shell + results rendering (Section 7 of the build plan).
+// Wizard shell + results dashboard (Section 7 of the build plan).
 //
-// Step 3 (HP/EV/AC toggles) is scaffolded but not implemented — milestone 4. Charts land in
-// milestone 5; results are currently text and simple CSS bars so the numbers can be checked
-// before any visual layer is added on top of them.
+// Milestone 5 turned the results step into a dashboard: charts (js/charts.js), a fuller
+// assumptions panel, and live extras toggles that recompute the page in place.
+//
+// The maths itself lives in js/calc/scenario.js, which knows nothing about the DOM — milestone
+// 6 moved it out so comparison mode (js/compare.js) could run two scenarios at once. What is
+// left in this file is the wizard shell: reading the form into params, and turning the numbers
+// that come back into sentences. The solar and battery sizes never move between scenarios
+// (Section 2), so a difference the user sees when flipping a toggle is the extra's doing and
+// not a resized system's.
 
 document.addEventListener("DOMContentLoaded", async () => {
   const $ = (id) => document.getElementById(id);
   const num = (id) => Number($(id).value);
+  // Detail fields inside a switched-off asset panel are skipped by validation, so they can
+  // still hold something unusable when the results page reaches for them.
+  const numOr = (id, fallback) => {
+    const v = Number($(id).value);
+    return Number.isFinite(v) ? v : fallback;
+  };
 
   const LAST_STEP = 4;
   const RESULTS_STEP = 4;
@@ -169,6 +181,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     });
 
+    // The wizard reads best as a narrow column; the dashboard needs the width.
+    document.body.classList.toggle("results-wide", step === RESULTS_STEP);
+
     $("backBtn").hidden = step === 1;
     $("nextBtn").hidden = step === RESULTS_STEP;
     $("restartBtn").hidden = step !== RESULTS_STEP;
@@ -200,185 +215,88 @@ document.addEventListener("DOMContentLoaded", async () => {
     render();
   });
 
-  // ---- calculation + results -------------------------------------------------
-  function calculate() {
-    // The city record itself is the site: it carries measured yield, seasonal shape and
-    // temperatures for its own coordinates.
-    const site = selectedCity();
-    const tilt = num("tilt");
-    const aspect = num("orientation");
-    const kwp = systemKwp();
-    const consumption = num("consumption");
+  // ---- calculation ------------------------------------------------------------
+  // The model and the per-scenario maths live in js/calc/scenario.js, DOM-free, so comparison
+  // mode can run two of them side by side. This file only reads the form into params and
+  // turns the numbers back into sentences.
+  const ASSET_KEYS = Scenario.ASSET_KEYS;
+  const RESULT_TOGGLE = { hp: "resultHp", ev: "resultEv", ac: "resultAc" };
+  const STEP_TOGGLE = { hp: "hpEnabled", ev: "evEnabled", ac: "acEnabled" };
 
-    const retailPrice = num("retailPrice");
-    const feedInTariff = num("feedInTariff");
-    const capexPerKwp = num("capexPerKwp");
-    const batteryCapexPerKwh = num("batteryCapexPerKwh");
-    const batteryKwh = num("batteryKwh");
-    const discountRatePct = num("discountRate");
-    const lifetimeYears = num("lifetime");
-    const batteryLifetimeYears = num("batteryLifetime");
-    const roundTripEfficiency = num("roundTrip");
-    const performanceRatio = num("performanceRatio");
-    const tariffEscalationPct = num("tariffEscalation");
+  let model = null;
 
-    const production = PV.hourlyProduction({ site, kwp, tilt, aspect, performanceRatio });
-    const baseLoad = LoadProfiles.baseLoad({ annualKwh: consumption });
-    const temps = Climate.hourlyTemperature({ site });
-
-    // Each asset is an independent series added on top of the base household load. The
-    // PV and battery configuration stays fixed across every combination (Section 2), so the
-    // deltas below are attributable to the asset rather than to a resized system.
-    const assets = [];
-    if ($("hpEnabled").checked) {
-      const mode = document.querySelector('input[name="hpMode"]:checked').value;
-      const hp = LoadProfiles.heatPumpLoad({
-        temps,
-        annualHeatKwh: mode === "kwh" ? num("hpHeatKwh") : null,
-        floorAreaM2: num("hpArea"),
-        standard: $("hpStandard").value,
-        supplyTempC: num("hpSupply"),
-      });
-      assets.push({
-        key: "hp",
-        name: "Heat pump",
-        series: hp.series,
-        electricityKwh: hp.electricityKwh,
-        detail: `${fmtInt(hp.heatDemandKwh)} kWh of heat at an average efficiency of ${hp.seasonalCOP.toFixed(1)}`,
-      });
-    }
-    if ($("evEnabled").checked) {
-      const ev = LoadProfiles.evLoad({
-        annualKm: num("evKm"),
-        kwhPer100km: num("evEfficiency"),
-        chargingStrategy: $("evStrategy").value,
-      });
-      assets.push({
-        key: "ev",
-        name: "Electric car",
-        series: ev.series,
-        electricityKwh: ev.electricityKwh,
-        detail:
-          $("evStrategy").value === "solar"
-            ? `${fmtInt(num("evKm"))} km a year, charged during the day`
-            : `${fmtInt(num("evKm"))} km a year, charged on arrival home`,
-      });
-    }
-    if ($("acEnabled").checked) {
-      const ac = LoadProfiles.acLoad({
-        temps,
-        floorAreaM2: num("acArea"),
-        seer: num("acSeer"),
-      });
-      assets.push({
-        key: "ac",
-        name: "Air conditioning",
-        series: ac.series,
-        electricityKwh: ac.electricityKwh,
-        detail:
-          ac.electricityKwh < 50
-            ? "barely used at this location's summer temperatures"
-            : `${fmtInt(ac.coolingDemandKwh)} kWh of cooling`,
-      });
-    }
-
-    const load = assets.length
-      ? LoadProfiles.add(baseLoad, ...assets.map((a) => a.series))
-      : baseLoad;
-    const totalConsumption = LoadProfiles.sum(load);
-
-    const noPv = { selfConsumed: 0, exported: 0, imported: totalConsumption };
-    const pvOnly = Dispatch.simulate({ production, load, usableCapacityKwh: 0 });
-    const withBattery = Dispatch.simulate({
-      production,
-      load,
-      usableCapacityKwh: batteryKwh,
-      roundTripEfficiency,
-    });
-
-    // Per-asset effect: base household load plus this one asset, against the same system.
-    const baselineFlows = Dispatch.simulate({
-      production,
-      load: baseLoad,
-      usableCapacityKwh: batteryKwh,
-      roundTripEfficiency,
-    });
-    const assetDeltas = assets.map((asset) => {
-      const withAsset = Dispatch.simulate({
-        production,
-        load: LoadProfiles.add(baseLoad, asset.series),
-        usableCapacityKwh: batteryKwh,
-        roundTripEfficiency,
-      });
-      return {
-        ...asset,
-        selfSufficiencyFrom: baselineFlows.selfSufficiencyRate,
-        selfSufficiencyTo: withAsset.selfSufficiencyRate,
-        extraImport: withAsset.imported - baselineFlows.imported,
-        extraSelfConsumed: withAsset.selfConsumed - baselineFlows.selfConsumed,
-      };
-    });
-
-    const pvCapex = kwp * capexPerKwp;
-    const batteryCapex = batteryKwh * batteryCapexPerKwh;
-    const econOpts = { retailPrice, feedInTariff, tariffEscalationPct };
-
-    const pvNpv = Economics.npv({
-      capex: pvCapex,
-      flows: pvOnly,
-      discountRatePct,
-      lifetimeYears,
-      ...econOpts,
-    });
-    const pvPayback = Economics.simplePaybackYears({
-      capex: pvCapex,
-      flows: pvOnly,
-      lifetimeYears,
-      ...econOpts,
-    });
-
-    buildFormatters($("currency").value);
-
-    const battery = batteryKwh > 0
-      ? Economics.batteryIncrement({
-          flowsWithout: pvOnly,
-          flowsWith: withBattery,
-          batteryCapex,
-          discountRatePct,
-          lifetimeYears,
-          batteryLifetimeYears,
-          ...econOpts,
-        })
-      : null;
-
-    const billNow = Economics.annualBill({ flows: noPv, ...econOpts });
-    const billPv = Economics.annualBill({ flows: pvOnly, ...econOpts });
-    const billBattery = Economics.annualBill({ flows: withBattery, ...econOpts });
-
-    renderResults({
-      city: site,
+  function readParams() {
+    return {
+      site: selectedCity(),
       country: countrySelect.options[countrySelect.selectedIndex].text,
-      kwp,
-      consumption,
-      totalConsumption,
-      assetDeltas,
-      pvOnly,
-      withBattery,
-      batteryKwh,
-      pvCapex,
-      batteryCapex,
-      pvNpv,
-      pvPayback,
-      battery,
-      billNow,
-      billPv,
-      billBattery,
-      lifetimeYears,
-      batteryLifetimeYears,
-      retailPrice,
-      feedInTariff,
-      tariffEscalationPct,
+      kwp: systemKwp(),
+      tilt: num("tilt"),
+      aspect: num("orientation"),
+      performanceRatio: num("performanceRatio"),
+      annualConsumptionKwh: num("consumption"),
+      batteryKwh: num("batteryKwh"),
+      roundTripEfficiency: num("roundTrip"),
+      capexPerKwp: num("capexPerKwp"),
+      batteryCapexPerKwh: num("batteryCapexPerKwh"),
+      discountRatePct: num("discountRate"),
+      lifetimeYears: num("lifetime"),
+      batteryLifetimeYears: num("batteryLifetime"),
+      retailPrice: num("retailPrice"),
+      feedInTariff: num("feedInTariff"),
+      tariffEscalationPct: num("tariffEscalation"),
+      hp: {
+        mode: document.querySelector('input[name="hpMode"]:checked').value,
+        annualHeatKwh: numOr("hpHeatKwh", 12000),
+        floorAreaM2: numOr("hpArea", 140),
+        standard: $("hpStandard").value,
+        supplyTempC: numOr("hpSupply", 45),
+      },
+      ev: {
+        annualKm: numOr("evKm", 12000),
+        kwhPer100km: numOr("evEfficiency", 18),
+        chargingStrategy: $("evStrategy").value,
+      },
+      ac: { floorAreaM2: numOr("acArea", 80), seer: numOr("acSeer", 3) },
+    };
+  }
+
+  // ---- results-page extras toggles -------------------------------------------
+  function enabledAssets() {
+    return ASSET_KEYS.reduce((acc, k) => {
+      acc[k] = $(RESULT_TOGGLE[k]).checked;
+      return acc;
+    }, {});
+  }
+
+  function refresh() {
+    if (!model) return;
+    const scenario = Scenario.compute(model, enabledAssets());
+    renderResults(scenario);
+    renderCharts(scenario);
+  }
+
+  ASSET_KEYS.forEach((k) => {
+    $(RESULT_TOGGLE[k]).addEventListener("change", () => {
+      // Keep step 3 in step with the results page, so going Back does not contradict what
+      // the user just saw.
+      $(STEP_TOGGLE[k]).checked = $(RESULT_TOGGLE[k]).checked;
+      refreshAssetPanels();
+      refresh();
     });
+  });
+
+  // A canvas cannot restyle itself the way CSS does when the OS flips to dark mode.
+  Charts.onThemeChange(() => {
+    if (step === RESULTS_STEP) refresh();
+  });
+
+  function calculate() {
+    buildFormatters($("currency").value);
+    model = Scenario.build(readParams());
+    ASSET_KEYS.forEach((k) => {
+      $(RESULT_TOGGLE[k]).checked = $(STEP_TOGGLE[k]).checked;
+    });
+    refresh();
   }
 
   const INT_FORMAT = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 });
@@ -393,9 +311,22 @@ document.addEventListener("DOMContentLoaded", async () => {
       currency,
       maximumFractionDigits: 0,
     });
+    // Tariffs are fractions of a unit, so they need their own formatter — the whole-unit one
+    // rounds every per-kWh price to zero.
+    const rate = new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
     const plain = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 });
+    const fine = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 1 });
     fmt = {
       money: (v) => money.format(Math.round(v)),
+      rate: (v) => rate.format(v),
+      // A single hour of a single day is a kilowatt-hour or two, so whole-kWh rounding
+      // collapses a day-profile axis into "2 kWh, 2 kWh, 1 kWh, 1 kWh".
+      kwhFine: (v) => `${fine.format(v)} kWh`,
       kwh: (v) => `${plain.format(Math.round(v))} kWh`,
       pct: (v) => `${Math.round(v * 100)}%`,
       years: (v) => (isFinite(v) ? `${v.toFixed(1)} years` : "never"),
@@ -413,30 +344,70 @@ document.addEventListener("DOMContentLoaded", async () => {
     return `<div class="bar"><span style="width:${pct}%"></span></div>`;
   }
 
+  // js/calc/scenario.js returns raw figures; the words are this layer's business.
+  const ASSET_NAMES = { hp: "Heat pump", ev: "Electric car", ac: "Air conditioning" };
+
+  function assetDetail(a) {
+    if (a.key === "hp") {
+      return `${fmtInt(a.heatDemandKwh)} kWh of heat at an average efficiency of ${a.seasonalCOP.toFixed(1)}`;
+    }
+    if (a.key === "ev") {
+      return a.chargingStrategy === "solar"
+        ? `${fmtInt(a.annualKm)} km a year, charged during the day`
+        : `${fmtInt(a.annualKm)} km a year, charged on arrival home`;
+    }
+    return a.electricityKwh < 50
+      ? "barely used at this location's summer temperatures"
+      : `${fmtInt(a.coolingDemandKwh)} kWh of cooling`;
+  }
+
+  const batteryThroughput = Scenario.batteryThroughput;
+
+  const withShare = (v, total) =>
+    total > 0 ? `${fmt.kwh(v)} <span class="share">(${Math.round((v / total) * 100)}%)</span>` : fmt.kwh(v);
+
+  // Sentence-cased list: "a heat pump", "a heat pump and an electric car", …
+  function joinNames(names) {
+    if (names.length <= 1) return names[0] || "";
+    return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  }
+
   function renderResults(r) {
+    const m = model;
+    const produced = r.chosen.totalProduction;
     const pvSaving = r.billNow - r.billPv;
     const pvWorthIt = r.pvNpv > 0;
     const batteryWorthIt = r.battery && r.battery.npv > 0;
 
+    // The strip under the toggles: what this scenario is, and what switching the extras on
+    // did to the size of the household.
+    const activeNames = r.assetDeltas.map((a) => ASSET_NAMES[a.key].toLowerCase());
+    const extraKwh = r.totalConsumption - r.baselineConsumption;
+    $("scenarioSummary").textContent = activeNames.length
+      ? `With ${joinNames(activeNames)}, your household uses ${fmt.kwh(r.totalConsumption)} a year — ` +
+        `${fmt.kwh(extraKwh)} more than without. The solar and battery sizes stay exactly as you set them.`
+      : `Your household as it is today: ${fmt.kwh(r.totalConsumption)} a year. ` +
+        `Switch an extra on to see what it would change.`;
+
     let verdict;
     if (pvWorthIt) {
       verdict = `<h3>Solar looks worthwhile here.</h3>
-        <p>A ${r.kwp.toFixed(1)} kWp system in ${r.city.name} should save about
+        <p>A ${m.kwp.toFixed(1)} kWp system in ${m.site.name} should save about
         <strong>${fmt.money(pvSaving)} per year</strong> and pay for itself in about
         <strong>${fmt.years(r.pvPayback)}</strong>.</p>`;
     } else {
       verdict = `<h3>Solar is marginal at these numbers.</h3>
-        <p>At the costs and tariffs you entered, a ${r.kwp.toFixed(1)} kWp system does not fully
-        pay back over ${r.lifetimeYears} years. It may still be worth it for other reasons, and a
+        <p>At the costs and tariffs you entered, a ${m.kwp.toFixed(1)} kWp system does not fully
+        pay back over ${m.lifetimeYears} years. It may still be worth it for other reasons, and a
         lower installed price or higher electricity price would change the answer.</p>`;
     }
     $("verdict").innerHTML = verdict;
 
-    const batterySection = r.batteryKwh > 0
+    const batterySection = r.hasBattery
       ? `<div class="result-block">
-          <h3>Adding ${article(r.batteryKwh)} ${r.batteryKwh} kWh battery</h3>
+          <h3>Adding ${article(m.batteryKwh)} ${m.batteryKwh} kWh battery</h3>
           <p class="headline ${batteryWorthIt ? "good" : "bad"}">
-            ${batteryWorthIt ? "+" : ""}${fmt.money(r.battery.npv)} over ${r.batteryLifetimeYears} years
+            ${batteryWorthIt ? "+" : ""}${fmt.money(r.battery.npv)} over ${m.batteryLifetimeYears} years
           </p>
           <p class="hint headline-note">
             ${batteryWorthIt
@@ -446,7 +417,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           <dl class="kv">
             <dt>Self-sufficiency</dt><dd>${fmt.pct(r.pvOnly.selfSufficiencyRate)} &rarr; ${fmt.pct(r.withBattery.selfSufficiencyRate)}</dd>
             <dt>Extra solar you use yourself</dt><dd>${fmt.kwh(r.battery.extraSelfConsumed)}</dd>
-            <dt>Battery cost</dt><dd>${fmt.money(r.batteryCapex)}</dd>
+            <dt>Battery cost</dt><dd>${fmt.money(m.batteryCapex)}</dd>
             <dt>Saving in year 1</dt><dd>${fmt.money(r.battery.year1Benefit)}</dd>
             <dt>Pays back in</dt><dd>${fmt.years(r.battery.paybackYears)}</dd>
             <dt>Yearly bill</dt><dd>${fmt.money(r.billBattery)}</dd>
@@ -457,14 +428,56 @@ document.addEventListener("DOMContentLoaded", async () => {
           <p class="hint">You set the battery size to 0, so we only looked at solar on its own.</p>
         </div>`;
 
+    // This list doubles as the table view for the charts: every figure a chart encodes with
+    // colour is also written out here in words, which is what the light-mode contrast relief
+    // on the aqua and yellow series requires.
+    $("results-body").innerHTML = `
+      <div class="result-block">
+        <h3>Solar on its own (${m.kwp.toFixed(1)} kWp)</h3>
+        <p class="headline ${pvWorthIt ? "good" : "bad"}">
+          ${pvWorthIt ? "+" : ""}${fmt.money(r.pvNpv)} over ${m.lifetimeYears} years
+        </p>
+        <dl class="kv">
+          <dt>Yearly bill now</dt><dd>${fmt.money(r.billNow)}</dd>
+          <dt>Yearly bill with solar</dt><dd>${fmt.money(r.billPv)}</dd>
+          <dt>Yearly saving</dt><dd>${fmt.money(pvSaving)}</dd>
+          <dt>System cost</dt><dd>${fmt.money(m.pvCapex)}</dd>
+          <dt>Pays back in</dt><dd>${fmt.years(r.pvPayback)}</dd>
+        </dl>
+      </div>
+
+      ${batterySection}
+
+      <div class="result-block">
+        <h3>Where your solar output went</h3>
+        <dl class="kv">
+          <dt>Produced per year</dt><dd>${fmt.kwh(r.chosen.totalProduction)}</dd>
+          <dt>Used straight away</dt><dd>${withShare(r.chosen.directSelfConsumed, produced)}</dd>
+          ${r.hasBattery
+            ? `<dt>Stored in the battery</dt><dd>${withShare(batteryThroughput(r.chosen), produced)}</dd>
+               <dt class="sub">…of which came back out</dt><dd>${fmt.kwh(r.chosen.batteryDischargeToLoad)}</dd>
+               <dt class="sub">…of which lost charging</dt><dd>${withShare(r.chosen.chargeLosses + r.chosen.dischargeLosses, produced)}</dd>`
+            : ""}
+          <dt>Sent to the grid</dt><dd>${withShare(r.chosen.exported, produced)}</dd>
+          <dt>Of your output, used on site</dt><dd>${fmt.pct(r.chosen.selfConsumptionRate)}</dd>
+        </dl>
+        ${bar(r.chosen.selfConsumptionRate)}
+        <dl class="kv">
+          <dt>Still bought from the grid</dt><dd>${fmt.kwh(r.chosen.imported)}</dd>
+          <dt>Share of your use covered by solar</dt><dd>${fmt.pct(r.chosen.selfSufficiencyRate)}</dd>
+        </dl>
+        ${bar(r.chosen.selfSufficiencyRate)}
+      </div>
+    `;
+
     // Each asset is shown against the same solar+battery system, so the figures answer
     // "what does adding this do to me?" rather than "what system should I buy instead?".
-    const assetSection = r.assetDeltas.length
+    $("results-extras").innerHTML = r.assetDeltas.length
       ? `<div class="result-block">
           <h3>What your extras change</h3>
           <p class="hint">
-            Each line adds that one item to your household on top of the same
-            ${r.kwp.toFixed(1)} kWp system${r.batteryKwh > 0 ? ` and ${r.batteryKwh} kWh battery` : ""}.
+            Each line adds that one item to your household on its own, on top of the same
+            ${m.kwp.toFixed(1)} kWp system${r.hasBattery ? ` and ${m.batteryKwh} kWh battery` : ""}.
           </p>
           <div class="delta-list">
             ${r.assetDeltas
@@ -477,10 +490,10 @@ document.addEventListener("DOMContentLoaded", async () => {
                     ? `self-sufficiency rises ${fmt.pct(a.selfSufficiencyFrom)} &rarr; ${fmt.pct(a.selfSufficiencyTo)}`
                     : `self-sufficiency barely moves (${fmt.pct(a.selfSufficiencyTo)})`;
                 return `<div class="delta">
-                    <span class="name">${a.name}</span>
+                    <span class="name">${ASSET_NAMES[a.key]}</span>
                     <span class="figure">+${fmt.kwh(a.electricityKwh)}/yr</span>
                     <span class="note">
-                      ${a.detail}. Of that, ${fmt.kwh(a.extraSelfConsumed)} comes from your own
+                      ${assetDetail(a)}. Of that, ${fmt.kwh(a.extraSelfConsumed)} comes from your own
                       roof and ${fmt.kwh(a.extraImport)} from the grid — ${direction}.
                     </span>
                   </div>`;
@@ -489,40 +502,6 @@ document.addEventListener("DOMContentLoaded", async () => {
           </div>
         </div>`
       : "";
-
-    $("results-body").innerHTML = `
-      ${assetSection}
-      <div class="result-block">
-        <h3>Solar on its own (${r.kwp.toFixed(1)} kWp)</h3>
-        <p class="headline ${pvWorthIt ? "good" : "bad"}">
-          ${pvWorthIt ? "+" : ""}${fmt.money(r.pvNpv)} over ${r.lifetimeYears} years
-        </p>
-        <dl class="kv">
-          <dt>Yearly bill now</dt><dd>${fmt.money(r.billNow)}</dd>
-          <dt>Yearly bill with solar</dt><dd>${fmt.money(r.billPv)}</dd>
-          <dt>Yearly saving</dt><dd>${fmt.money(pvSaving)}</dd>
-          <dt>System cost</dt><dd>${fmt.money(r.pvCapex)}</dd>
-          <dt>Pays back in</dt><dd>${fmt.years(r.pvPayback)}</dd>
-        </dl>
-      </div>
-
-      <div class="result-block">
-        <h3>Where your solar energy goes</h3>
-        <dl class="kv">
-          <dt>Produced per year</dt><dd>${fmt.kwh(r.pvOnly.totalProduction)}</dd>
-          <dt>You use directly</dt><dd>${fmt.pct(r.pvOnly.selfConsumptionRate)}</dd>
-        </dl>
-        ${bar(r.pvOnly.selfConsumptionRate)}
-        <dl class="kv">
-          <dt>Sent to the grid</dt><dd>${fmt.kwh(r.pvOnly.exported)}</dd>
-          <dt>Still bought from the grid</dt><dd>${fmt.kwh(r.pvOnly.imported)}</dd>
-          <dt>Share of your use covered by solar</dt><dd>${fmt.pct(r.pvOnly.selfSufficiencyRate)}</dd>
-        </dl>
-        ${bar(r.pvOnly.selfSufficiencyRate)}
-      </div>
-
-      ${batterySection}
-    `;
 
     const assetAssumptions = [];
     if (r.assetDeltas.some((a) => a.key === "hp")) {
@@ -551,30 +530,93 @@ document.addEventListener("DOMContentLoaded", async () => {
     $("assumptions-body").innerHTML = `
       <ul>
         <li><strong>Screening estimate, not a quote.</strong> Treat these numbers as a first
-        indication, not an engineering study or a financial promise.</li>
+        indication, not an engineering study or a financial promise. A proper design tool
+        optimises the system; this one tests the system you described.</li>
         <li><strong>Sunlight and temperature</strong> are PVGIS measurements for
-        ${r.city.name} (${r.country}) itself. If you live well above or below the town —
+        ${m.site.name} (${m.country}) itself. If you live well above or below the town —
         common in valleys and hill country — your own conditions will differ.</li>
         ${assetAssumptions.join("\n")}
         <li><strong>Your electricity use</strong> is spread over the year using a typical
-        household pattern scaled to the ${fmt.kwh(r.consumption)} you entered — not your real
+        household pattern scaled to the ${fmt.kwh(m.consumption)} you entered — not your real
         meter data. A household that is out all day will see less benefit than this;
         one at home during the day will see more.${
           r.assetDeltas.length
             ? ` With your extras added, total use comes to ${fmt.kwh(r.totalConsumption)} a year.`
             : ""
         }</li>
+        <li><strong>The extras are tested against a fixed system.</strong> Switching a heat
+        pump, car or air conditioner on never resizes the ${m.kwp.toFixed(1)} kWp of panels
+        ${m.batteryKwh > 0 ? `or the ${m.batteryKwh} kWh battery ` : ""}— that is deliberate,
+        so the change you see is the extra's doing and not a different system's. A larger
+        system would usually suit a bigger household better.</li>
         <li><strong>No shading</strong> from trees, chimneys or neighbouring buildings is
         modelled.</li>
         <li><strong>Battery control</strong> is a simple rule: store surplus, use it when short.
         It does not trade on prices or plan ahead, so a smart system could do slightly better.</li>
         <li><strong>Weather variability</strong> between days is smoothed out, which makes the
-        battery look slightly better than it would be in a real year.</li>
-        <li><strong>Money:</strong> ${r.lifetimeYears}-year life, ${num("discountRate")}% discount
+        battery look slightly better than it would be in a real year. The typical-day charts
+        are month averages for the same reason: a real day is spikier than either curve, so
+        never read a peak or a fuse size off them.</li>
+        <li><strong>The battery is judged on what it adds</strong>, not on your whole bill: its
+        cost is set against the extra solar it lets you keep instead of exporting. That makes
+        the gap between your ${fmt.rate(m.econOpts.retailPrice)}/kWh purchase price and your
+        ${fmt.rate(m.econOpts.feedInTariff)}/kWh export price the number that decides it.</li>
+        <li><strong>Money:</strong> ${m.lifetimeYears}-year life, ${m.discountRatePct}% discount
         rate, panels losing 0.5% output per year, maintenance at 1% of system cost per year,
-        electricity prices rising ${r.tariffEscalationPct}% per year. All amounts are in the
-        currency you selected; no exchange rates are applied.</li>
+        electricity prices rising ${m.econOpts.tariffEscalationPct}% per year. All amounts are
+        in the currency you selected; no exchange rates are applied. The money chart shows the
+        plain running total, so it crosses zero at the payback year quoted above; the
+        ${fmt.money(r.pvNpv)} headline is the same cash flow discounted back to today, which is
+        why the two figures differ.</li>
       </ul>`;
+  }
+
+  // ---- charts ----------------------------------------------------------------
+  function renderCharts(r) {
+    const m = model;
+    const monthly = r.chosen.buckets;
+
+    Charts.monthly("chartMonthly", {
+      labels: Aggregate.MONTH_LABELS,
+      direct: monthly.map((b) => b.directSelfConsumed),
+      battery: monthly.map((b) => b.batteryDischargeToLoad),
+      grid: monthly.map((b) => b.imported),
+      hasBattery: r.hasBattery,
+      kwhFmt: fmt.kwh,
+    });
+
+    // Without a battery the split is two slices — "used" and "exported" — and a two-slice
+    // doughnut says less than the one percentage already printed above it.
+    $("card-split").hidden = !r.hasBattery;
+    if (r.hasBattery) {
+      Charts.split("chartSplit", {
+        direct: r.chosen.directSelfConsumed,
+        throughBattery: batteryThroughput(r.chosen),
+        exported: r.chosen.exported,
+        kwhFmt: fmt.kwh,
+      });
+    }
+
+    Charts.cashFlow("chartCash", {
+      years: r.cashFlow.years,
+      solar: r.cashFlow.solar,
+      battery: r.cashFlow.battery,
+      moneyFmt: fmt.money,
+    });
+
+    const hours = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}:00`);
+    [["chartSummer", "summerTitle", 0], ["chartWinter", "winterTitle", 1]].forEach(
+      ([canvasId, titleId, slot]) => {
+        $(titleId).textContent = Aggregate.DAY_PROFILES[slot].label;
+        Charts.dayProfile(canvasId, {
+          hours,
+          production: Aggregate.dayProfile(r.dayFlows.buckets, slot, "production"),
+          load: Aggregate.dayProfile(r.dayFlows.buckets, slot, "load"),
+          kwhFmt: fmt.kwhFine,
+        });
+      }
+    );
+
   }
 
   render();

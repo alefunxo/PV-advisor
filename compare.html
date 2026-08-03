@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Compare two systems — Solar Advisor</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body class="compare-mode">
+  <main>
+    <header class="page-header">
+      <h1>Compare two systems</h1>
+      <p class="subtitle">
+        One house, two kits. Set the house up once, then put any two combinations of panels,
+        battery and electric extras side by side.
+      </p>
+      <p class="mode-switch"><a href="index.html">&larr; Back to the step-by-step version</a></p>
+    </header>
+
+    <!-- The house is shared on purpose: two scenarios in different towns, or on different
+         tariffs, are not comparable — the difference would not be something you could act on.
+         Only the kit differs between the columns. -->
+    <section class="shared-panel">
+      <h2>Your house</h2>
+      <p class="lead">These apply to both columns.</p>
+
+      <div class="row">
+        <div class="field">
+          <label for="country">Country</label>
+          <select id="country"></select>
+        </div>
+        <div class="field">
+          <label for="city">Nearest town or city</label>
+          <select id="city"></select>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="orientation">Which way does the roof face?</label>
+          <select id="orientation">
+            <option value="0" selected>South — best</option>
+            <option value="-45">South-east</option>
+            <option value="45">South-west</option>
+            <option value="-90">East</option>
+            <option value="90">West</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="tilt">Roof steepness</label>
+          <select id="tilt">
+            <option value="0">Flat roof</option>
+            <option value="15">Shallow (15°)</option>
+            <option value="30" selected>Typical pitch (30°)</option>
+            <option value="45">Steep (45°)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="consumption">Electricity used per year, before extras (kWh)</label>
+          <input type="number" id="consumption" min="100" step="50" value="4500" />
+        </div>
+        <div class="field">
+          <label for="currency">Currency</label>
+          <select id="currency">
+            <option value="EUR">Euro (€)</option>
+            <option value="CHF">Swiss franc (CHF)</option>
+            <option value="GBP">Pound sterling (£)</option>
+            <option value="SEK">Swedish krona (SEK)</option>
+            <option value="NOK">Norwegian krone (NOK)</option>
+            <option value="DKK">Danish krone (DKK)</option>
+            <option value="PLN">Polish złoty (PLN)</option>
+            <option value="CZK">Czech koruna (CZK)</option>
+            <option value="HUF">Hungarian forint (HUF)</option>
+            <option value="RON">Romanian leu (RON)</option>
+            <option value="BGN">Bulgarian lev (BGN)</option>
+          </select>
+        </div>
+      </div>
+
+      <details class="advanced">
+        <summary>Costs &amp; tariffs</summary>
+        <div class="row">
+          <div class="field">
+            <label for="retailPrice">What you pay for electricity (per kWh)</label>
+            <input type="number" id="retailPrice" step="0.01" min="0" value="0.28" />
+          </div>
+          <div class="field">
+            <label for="feedInTariff">What you are paid for exports (per kWh)</label>
+            <input type="number" id="feedInTariff" step="0.01" min="0" value="0.08" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="capexPerKwp">Solar system cost (per kWp, installed)</label>
+            <input type="number" id="capexPerKwp" step="10" min="0" value="1400" />
+          </div>
+          <div class="field">
+            <label for="batteryCapexPerKwh">Battery cost (per kWh)</label>
+            <input type="number" id="batteryCapexPerKwh" step="10" min="0" value="900" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="discountRate">Discount rate (%)</label>
+            <input type="number" id="discountRate" step="0.1" min="0" value="3" />
+          </div>
+          <div class="field">
+            <label for="lifetime">System lifetime (years)</label>
+            <input type="number" id="lifetime" step="1" min="1" value="25" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="batteryLifetime">Battery lifetime (years)</label>
+            <input type="number" id="batteryLifetime" step="1" min="1" value="15" />
+          </div>
+          <div class="field">
+            <label for="roundTrip">Battery round-trip efficiency</label>
+            <input type="number" id="roundTrip" step="0.01" min="0.5" max="1" value="0.9" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="performanceRatio">Performance ratio</label>
+            <input type="number" id="performanceRatio" step="0.01" min="0.5" max="1" value="0.86" />
+          </div>
+          <div class="field">
+            <label for="tariffEscalation">Yearly electricity price rise (%)</label>
+            <input type="number" id="tariffEscalation" step="0.5" min="0" value="0" />
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <p class="error" id="formError" hidden></p>
+
+    <!-- Both columns are generated from one template in js/compare.js, so they cannot drift
+         apart. -->
+    <div class="compare-grid" id="compareGrid"></div>
+
+    <section class="result-block verdict-block" id="verdictBlock" hidden>
+      <h2>Side by side</h2>
+      <div id="deltaBody"></div>
+    </section>
+
+    <details class="advanced assumptions-panel" id="assumptions">
+      <summary>What this estimate assumes</summary>
+      <div id="assumptions-body"></div>
+    </details>
+
+    <footer class="page-footer">
+      <p>
+        Sunlight data from <a href="https://re.jrc.ec.europa.eu/pvg_tools/en/">PVGIS</a> (European
+        Commission JRC). Place names from <a href="https://www.geonames.org/">GeoNames</a>
+        (CC&nbsp;BY&nbsp;4.0). This is a screening tool, not a quote or an engineering study.
+      </p>
+    </footer>
+  </main>
+
+  <script src="js/vendor/chart.umd.js"></script>
+  <script src="js/data/load-profiles.js"></script>
+  <script src="js/calc/pv.js"></script>
+  <script src="js/calc/climate.js"></script>
+  <script src="js/calc/aggregate.js"></script>
+  <script src="js/calc/dispatch.js"></script>
+  <script src="js/calc/economics.js"></script>
+  <script src="js/calc/scenario.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/compare.js"></script>
+</body>
+</html>
