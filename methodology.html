@@ -81,17 +81,19 @@
       <h3>Why every town carries its own measurements</h3>
 
       <p>
-        An earlier version of this tool snapped each town to the nearest point on a 1° grid of
-        measured points. In flat country that is harmless. In mountains it is not: Zürich landed
-        on an alpine cell reading <strong>−7.6 °C in January against the city's actual
-        +1.2 °C</strong>. An 8.4 K error does not merely dent a heat pump estimate, it inverts
-        it, and it silently zeroed out air conditioning for every city near mountains. The grid
-        was deleted, and yield, seasonal shape and temperature are now measured per town.
+        Yield, seasonal shape and temperature are all read at the town's own coordinates, never
+        interpolated from surrounding points. In mountainous country that distinction is
+        decisive: a valley city and a point a few kilometres away up the slope can differ by
+        <strong>8 K in January</strong>. An error that size does not merely dent a heat pump
+        estimate, it inverts it, and it can silently zero out the cooling demand of a city with
+        real summers. Anything that depends on temperature therefore has to be measured where
+        people actually live rather than nearby.
       </p>
 
       <p>
-        One grid survives, for the roof orientation correction only. How much a tilted,
-        rotated roof gains or loses against a 35° south reference depends on the sun's angle,
+        One quantity is interpolated rather than measured per town: the roof orientation
+        correction. How much a tilted, rotated roof gains or loses against a 35° south
+        reference depends on the sun's angle,
         which varies with latitude rather than with local terrain, so it is safe to interpolate.
         Correction factors are held for reference latitude bands 40°, 50° and 60° N; the factor
         for your roof is interpolated bilinearly across tilt and azimuth within each band, then
@@ -222,9 +224,9 @@
       </p>
       <p>
         Whether a day needs heat at all is decided from that day's <strong>mean</strong>
-        temperature, the standard degree-day convention. An earlier version tested each hour
-        separately and had the heat pump running on cool July nights, which no building with any
-        thermal mass does. Within a heating day the heat is weighted towards the colder hours,
+        temperature, the standard degree-day convention. Testing each hour on its own instead
+        would put the heat pump to work on a cool July night, which no building with any thermal
+        mass does. Within a heating day the heat is weighted towards the colder hours,
         with a small floor so that a mild day spreads its demand instead of collapsing it onto
         one hour.
       </p>
