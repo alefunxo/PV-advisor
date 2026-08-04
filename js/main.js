@@ -630,7 +630,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         plain running total, so it crosses zero at the payback year quoted above; the
         ${fmt.money(r.pvNpv)} headline is the same cash flow discounted back to today, which is
         why the two figures differ.</li>
-      </ul>`;
+      </ul>
+      <p class="hint">This panel lists the caveats that apply to <em>your</em> scenario. The
+      whole method — data sources, formulas and every limitation — is written out in
+      <a href="methodology.html">how this works</a>.</p>`;
   }
 
   // ---- charts ----------------------------------------------------------------

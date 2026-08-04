@@ -497,7 +497,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         <li><strong>Money:</strong> ${m.lifetimeYears}-year life, ${m.discountRatePct}% discount
         rate, panels losing 0.5% output per year, maintenance at 1% of system cost per year.
         All amounts are in the currency you selected; no exchange rates are applied.</li>
-      </ul>`;
+      </ul>
+      <p class="hint">This panel lists the caveats that apply to <em>your</em> scenario. The
+      whole method — data sources, formulas and every limitation — is written out in
+      <a href="methodology.html">how this works</a>.</p>`;
   }
 
   // ---- recompute ------------------------------------------------------------

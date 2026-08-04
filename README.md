@@ -27,8 +27,13 @@ solar yield, seasonal distribution and monthly temperatures.
 
 ```
 index.html              wizard markup
+compare.html            two-system comparison, reached from the end of the wizard
+methodology.html        the whole method written out, linked from every page header
 css/style.css
 js/main.js              wizard state, navigation, results rendering
+js/compare.js           two-column comparison shell
+js/state.js             scenario hand-off between the pages, via the URL
+js/calc/scenario.js     one scenario end to end: profiles -> dispatch -> economics
 js/calc/pv.js           yield + hourly production profile
 js/calc/climate.js      hourly temperature reconstruction
 js/calc/dispatch.js     battery charge/discharge heuristic
@@ -46,9 +51,11 @@ js/data/load-profiles.js      synthetic household + heat pump / EV / AC load pro
 | 2. Battery dispatch + incremental economics | done |
 | 3. Load profile + wizard UI | done |
 | 4. Heat pump / EV / AC toggles | done |
-| 5. Results dashboard + charts | not started |
-| 6. Two-scenario comparison mode | not started |
+| 5. Results dashboard + charts | done |
+| 6. Two-scenario comparison mode | done |
 | 7. Polish, validation, mobile | partial |
+| 8. Methodology page | done |
+| 9. Multilingual (DE / FR / ES / IT) | not started |
 
 ## Data sources
 

@@ -857,6 +857,165 @@ body.compare-mode main {
   margin-bottom: 0.4rem;
 }
 
+/* ---- header link to the methodology page ----
+   On every page, in the header rather than the footer: the method is the thing this tool has
+   to offer against an installer's spreadsheet, so it should not be findable only by someone
+   who already went looking. Comparison mode is deliberately *not* linked here — it is reached
+   from the end of the wizard, on a house the visitor has already described. */
+.site-nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.site-nav a {
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.1rem;
+}
+
+.site-nav a:hover,
+.site-nav a:focus-visible {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ---- methodology page ----
+   A reading page, so the column is set narrower than the wizard's and the whole page —
+   header, prose and footer — shares that one measure rather than having the text sit
+   off-centre inside a wider shell. */
+body.doc-page main {
+  max-width: 36rem;
+}
+
+.doc h2 {
+  font-size: 1.15rem;
+  margin: 2.75rem 0 0.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+
+.doc h3 {
+  font-size: 0.98rem;
+  margin: 1.75rem 0 0.5rem;
+}
+
+.doc p {
+  margin: 0 0 1rem;
+}
+
+.doc code {
+  font-size: 0.86em;
+  background: var(--panel);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+
+.doc-intro {
+  font-size: 1.02rem;
+}
+
+/* Formulas are set apart rather than run into the prose: they are the claims a sceptical
+   reader will want to check, and they should be findable by scanning. */
+.formula {
+  background: var(--panel);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 0.7rem 0.9rem;
+  margin: 0 0 1rem;
+  font-size: 0.92rem;
+  overflow-x: auto;
+}
+
+.toc {
+  background: var(--panel);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem;
+  margin-bottom: 2rem;
+}
+
+.toc h2 {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0 0 0.5rem;
+  padding: 0;
+  border: 0;
+}
+
+.toc ol {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.92rem;
+}
+
+.toc li {
+  margin-bottom: 0.25rem;
+}
+
+.doc-list {
+  margin: 0 0 1.25rem;
+}
+
+.doc-list dt {
+  font-weight: 600;
+  margin-bottom: 0.2rem;
+}
+
+/* Full-strength text: what is in these definitions is the substance of the section, not an
+   aside, and a paragraph of it set in the muted grey reads as small print. */
+.doc-list dd {
+  margin: 0 0 0.9rem;
+}
+
+/* The building-vintage figures read as a table, not as prose. */
+.doc-list.compact {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.15rem 1rem;
+  font-size: 0.92rem;
+}
+
+.doc-list.compact dt {
+  font-weight: 400;
+}
+
+.doc-list.compact dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+.doc-steps,
+.doc-limits {
+  padding-left: 1.2rem;
+  margin: 0 0 1.25rem;
+}
+
+.doc-steps li,
+.doc-limits li {
+  margin-bottom: 0.7rem;
+}
+
+.doc-close {
+  border-left: 3px solid var(--good);
+  background: var(--panel);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 0.8rem 1rem;
+  margin-top: 1.5rem;
+}
+
+.doc-source {
+  font-size: 0.84rem;
+  color: var(--muted);
+  margin-top: 1.5rem;
+}
+
 /* ---- footer ---- */
 .page-footer {
   margin-top: 3rem;
