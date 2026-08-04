@@ -17,51 +17,38 @@
       <p class="mode-switch"><a href="index.html">&larr; Back to the step-by-step version</a></p>
     </header>
 
-    <!-- The house is shared on purpose: two scenarios in different towns, or on different
-         tariffs, are not comparable — the difference would not be something you could act on.
-         Only the kit differs between the columns. -->
-    <section class="shared-panel">
-      <h2>Your house</h2>
-      <p class="lead">These apply to both columns.</p>
+    <!-- Shown when the page is opened directly rather than from the last step of the wizard.
+         A locked house needs a house to lock, so there is nothing sensible to show without
+         one. -->
+    <section class="shared-panel" id="noStatePanel" hidden>
+      <h2>Start with your house</h2>
+      <p class="lead">
+        This page compares two systems for one particular house, so it needs to know the house
+        first — where it is, which way the roof faces, and how much electricity it uses.
+      </p>
+      <p><a class="button-link" href="index.html">Answer three quick questions &rarr;</a></p>
+    </section>
 
-      <div class="row">
-        <div class="field">
-          <label for="country">Country</label>
-          <select id="country"></select>
+    <!-- The house is fixed here, not merely shared. It was settled in the wizard, and letting
+         it move would break the one thing this page is for: two scenarios in different towns,
+         or on different roofs, are not comparable — the difference would not be something a
+         homeowner could act on. Only the kit differs between the columns. -->
+    <section class="shared-panel" id="housePanel" hidden>
+      <div class="house-head">
+        <div>
+          <h2>Your house</h2>
+          <p class="lead">
+            Carried over from your answers, and fixed for both columns — only the kit below
+            changes.
+          </p>
         </div>
-        <div class="field">
-          <label for="city">Nearest town or city</label>
-          <select id="city"></select>
-        </div>
+        <a class="secondary-link" href="index.html">Change my house</a>
       </div>
 
-      <div class="row">
-        <div class="field">
-          <label for="orientation">Which way does the roof face?</label>
-          <select id="orientation">
-            <option value="0" selected>South — best</option>
-            <option value="-45">South-east</option>
-            <option value="45">South-west</option>
-            <option value="-90">East</option>
-            <option value="90">West</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="tilt">Roof steepness</label>
-          <select id="tilt">
-            <option value="0">Flat roof</option>
-            <option value="15">Shallow (15°)</option>
-            <option value="30" selected>Typical pitch (30°)</option>
-            <option value="45">Steep (45°)</option>
-          </select>
-        </div>
-      </div>
+      <dl class="house-summary" id="houseSummary"></dl>
 
-      <div class="row">
-        <div class="field">
-          <label for="consumption">Electricity used per year, before extras (kWh)</label>
-          <input type="number" id="consumption" min="100" step="50" value="4500" />
-        </div>
+      <details class="advanced">
+        <summary>Costs &amp; tariffs</summary>
         <div class="field">
           <label for="currency">Currency</label>
           <select id="currency">
@@ -78,10 +65,6 @@
             <option value="BGN">Bulgarian lev (BGN)</option>
           </select>
         </div>
-      </div>
-
-      <details class="advanced">
-        <summary>Costs &amp; tariffs</summary>
         <div class="row">
           <div class="field">
             <label for="retailPrice">What you pay for electricity (per kWh)</label>
@@ -137,6 +120,11 @@
 
     <p class="error" id="formError" hidden></p>
 
+    <!-- Only the panels and the battery are costed anywhere in this tool, so when an extra is
+         switched on this says so where the money figures are, not only in the panel at the
+         bottom. -->
+    <p class="notice" id="costNotice" hidden></p>
+
     <!-- Both columns are generated from one template in js/compare.js, so they cannot drift
          apart. -->
     <div class="compare-grid" id="compareGrid"></div>
@@ -146,7 +134,7 @@
       <div id="deltaBody"></div>
     </section>
 
-    <details class="advanced assumptions-panel" id="assumptions">
+    <details class="advanced assumptions-panel" id="assumptions" hidden>
       <summary>What this estimate assumes</summary>
       <div id="assumptions-body"></div>
     </details>
@@ -168,6 +156,7 @@
   <script src="js/calc/dispatch.js"></script>
   <script src="js/calc/economics.js"></script>
   <script src="js/calc/scenario.js"></script>
+  <script src="js/state.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/compare.js"></script>
 </body>

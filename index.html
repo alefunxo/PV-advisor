@@ -13,9 +13,6 @@
       <p class="subtitle">
         A quick screening estimate for anywhere in Europe. Three short steps, no sign-up.
       </p>
-      <p class="mode-switch">
-        Already know roughly what you want? <a href="compare.html">Compare two systems side by side &rarr;</a>
-      </p>
     </header>
 
     <ol class="steps" id="stepper">
@@ -330,6 +327,11 @@
           <p class="hint" id="scenarioSummary"></p>
         </div>
 
+        <!-- Only the panels and the battery are costed anywhere in this tool. When an extra is
+             switched on, that belongs next to the money figures, not only in the panel at the
+             bottom of the page. -->
+        <p class="notice" id="costNotice" hidden></p>
+
         <div id="results-body"></div>
 
         <div class="chart-grid">
@@ -381,6 +383,19 @@
 
         <div id="results-extras"></div>
 
+        <!-- Comparison mode is reachable only from here, so it always starts from a house the
+             user has already described rather than from a blank form. -->
+        <div class="cta">
+          <div>
+            <h3>Not sure this is the right system?</h3>
+            <p class="hint">
+              Put two versions of it next to each other — with and without a battery, more or
+              fewer panels, a heat pump or not. Your house and your tariffs carry over.
+            </p>
+          </div>
+          <button type="button" id="compareBtn">Compare two systems &rarr;</button>
+        </div>
+
         <details class="advanced assumptions-panel" id="assumptions" open>
           <summary>What this estimate assumes</summary>
           <div id="assumptions-body"></div>
@@ -414,6 +429,7 @@
   <script src="js/calc/dispatch.js"></script>
   <script src="js/calc/economics.js"></script>
   <script src="js/calc/scenario.js"></script>
+  <script src="js/state.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/main.js"></script>
 </body>

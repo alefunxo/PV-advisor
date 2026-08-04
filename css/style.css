@@ -24,6 +24,10 @@
   --c-grid: #eb6834;
   --c-exported: #eda100;
   --chart-gridline: #ebedf0;
+
+  --notice-bg: #fdf6e6;
+  --notice-border: #ecd9a8;
+  --notice-rule: #d99b0b;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -45,6 +49,10 @@
     --c-grid: #d95926;
     --c-exported: #c98500;
     --chart-gridline: #23262c;
+
+    --notice-bg: #241f14;
+    --notice-border: #4a3f22;
+    --notice-rule: #d99b0b;
   }
 }
 
@@ -572,6 +580,57 @@ button:hover {
   }
 }
 
+/* ---- call to action + notices ---- */
+.cta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.15rem;
+  margin-bottom: 1rem;
+  background: var(--panel);
+}
+
+.cta h3 {
+  margin: 0 0 0.3rem;
+  font-size: 1rem;
+}
+
+.cta .hint {
+  margin: 0;
+  max-width: 46ch;
+}
+
+.cta button {
+  flex: none;
+}
+
+/* A caveat that changes how a money figure should be read belongs beside the figure, not in
+   a panel at the bottom of the page. Warm rather than red: it qualifies the result, it does
+   not mean something went wrong. */
+.notice {
+  border: 1px solid var(--notice-border);
+  border-left: 4px solid var(--notice-rule);
+  border-radius: var(--radius);
+  background: var(--notice-bg);
+  padding: 0.8rem 1rem;
+  margin: 0 0 1.25rem;
+  font-size: 0.88rem;
+}
+
+.button-link {
+  display: inline-block;
+  padding: 0.65rem 1.4rem;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+  text-decoration: none;
+}
+
 /* ---- comparison mode ---- */
 body.compare-mode main {
   max-width: 1080px;
@@ -584,6 +643,38 @@ body.compare-mode main {
 
 .mode-switch a {
   color: var(--accent);
+}
+
+.house-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.secondary-link {
+  flex: none;
+  font-size: 0.88rem;
+  color: var(--accent);
+}
+
+/* The house is shown, not offered for editing — it was settled in the wizard. */
+.house-summary {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 1.25rem;
+  margin: 0.25rem 0 0;
+  font-size: 0.92rem;
+}
+
+.house-summary dt {
+  color: var(--muted);
+}
+
+.house-summary dd {
+  margin: 0;
+  font-weight: 600;
 }
 
 .shared-panel {
@@ -659,15 +750,26 @@ body.compare-mode main {
   height: 240px;
 }
 
+/* Every row is rendered in both columns, with a dash where it does not apply, so the two
+   charts and the blocks under them line up horizontally. Columns that grow different numbers
+   of rows put their charts at different heights, and charts you cannot scan across defeat the
+   point of a side-by-side layout. */
+.col-energy,
 .col-summary {
   margin-top: 1.25rem;
   padding-top: 1rem;
   border-top: 1px solid var(--border);
 }
 
+.col-energy h3,
 .col-summary h3 {
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.6rem;
   font-size: 0.95rem;
+}
+
+.kv .na {
+  color: var(--muted);
+  font-weight: 400;
 }
 
 .summary-list {

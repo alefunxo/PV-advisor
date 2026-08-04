@@ -290,6 +290,48 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (step === RESULTS_STEP) refresh();
   });
 
+  // ---- hand-off to comparison mode -------------------------------------------
+  // Everything the user answered travels in the URL, so the comparison page opens on their
+  // house and their kit rather than on a blank form. The extras taken across are the ones
+  // showing on the results page right now, not the ones ticked back on step 3 — those are the
+  // same thing, but the results page is what the user is looking at.
+  $("compareBtn").addEventListener("click", () => {
+    const enabled = enabledAssets();
+    const query = ShareState.encode({
+      country: countrySelect.value,
+      cityName: selectedCity().name,
+      orientation: $("orientation").value,
+      tilt: $("tilt").value,
+      consumption: $("consumption").value,
+      currency: $("currency").value,
+      retailPrice: $("retailPrice").value,
+      feedInTariff: $("feedInTariff").value,
+      capexPerKwp: $("capexPerKwp").value,
+      batteryCapexPerKwh: $("batteryCapexPerKwh").value,
+      discountRate: $("discountRate").value,
+      lifetime: $("lifetime").value,
+      batteryLifetime: $("batteryLifetime").value,
+      roundTrip: $("roundTrip").value,
+      performanceRatio: $("performanceRatio").value,
+      tariffEscalation: $("tariffEscalation").value,
+      // The wizard can size by roof area, so send the kWp it actually worked from.
+      kwp: systemKwp().toFixed(2),
+      batteryKwh: $("batteryKwh").value,
+      hp: enabled.hp,
+      ev: enabled.ev,
+      ac: enabled.ac,
+      hpArea: $("hpArea").value,
+      hpStandard: $("hpStandard").value,
+      hpSupply: $("hpSupply").value,
+      evKm: $("evKm").value,
+      evEfficiency: $("evEfficiency").value,
+      evStrategy: $("evStrategy").value,
+      acArea: $("acArea").value,
+      acSeer: $("acSeer").value,
+    });
+    window.location.href = `compare.html?${query}`;
+  });
+
   function calculate() {
     buildFormatters($("currency").value);
     model = Scenario.build(readParams());
@@ -346,6 +388,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // js/calc/scenario.js returns raw figures; the words are this layer's business.
   const ASSET_NAMES = { hp: "Heat pump", ev: "Electric car", ac: "Air conditioning" };
+  // The three whose purchase price the tool does not model.
+  const UNCOSTED = { hp: "heat pump", ev: "car and its charger", ac: "air conditioner" };
 
   function assetDetail(a) {
     if (a.key === "hp") {
@@ -388,6 +432,20 @@ document.addEventListener("DOMContentLoaded", async () => {
         `${fmt.kwh(extraKwh)} more than without. The solar and battery sizes stay exactly as you set them.`
       : `Your household as it is today: ${fmt.kwh(r.totalConsumption)} a year. ` +
         `Switch an extra on to see what it would change.`;
+
+    // Only the panels and the battery are costed. An extra changes the electricity bill, and
+    // that change is in every figure below — but buying the thing is not, and a reader
+    // comparing one money figure against another needs to be told that here, not in a panel
+    // at the bottom of the page.
+    const uncosted = r.assetDeltas.map((a) => UNCOSTED[a.key]);
+    $("costNotice").hidden = uncosted.length === 0;
+    if (uncosted.length) {
+      $("costNotice").innerHTML =
+        `<strong>What you pay for the ${joinNames(uncosted)} is not included.</strong> ` +
+        `Only the panels and the battery are costed here. The extras change your electricity ` +
+        `bill, and that is in every figure below — but the price of buying and installing them ` +
+        `is not.`;
+    }
 
     let verdict;
     if (pvWorthIt) {
@@ -532,6 +590,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         <li><strong>Screening estimate, not a quote.</strong> Treat these numbers as a first
         indication, not an engineering study or a financial promise. A proper design tool
         optimises the system; this one tests the system you described.</li>
+        <li><strong>Only the panels and the battery are costed.</strong> Buying and installing a
+        heat pump, an electric car or an air conditioner is not in any figure here — their
+        effect on your electricity bill is, but their price is not. Nor are grants, subsidies,
+        tax relief or the running costs of whatever the heat pump replaces.</li>
         <li><strong>Sunlight and temperature</strong> are PVGIS measurements for
         ${m.site.name} (${m.country}) itself. If you live well above or below the town —
         common in valleys and hill country — your own conditions will differ.</li>

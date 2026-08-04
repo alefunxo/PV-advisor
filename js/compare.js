@@ -1,10 +1,16 @@
 // Comparison mode (milestone 6): one house, two kits, side by side.
 //
-// The house — town, roof, base consumption, tariffs, financial assumptions — is shared and
-// edited once. Only the *distributed energy resources* differ between the columns: panel size,
-// battery size, and which of the heat pump / electric car / air conditioning are present, with
-// their own settings. Comparing two scenarios in different towns or on different tariffs was
-// deliberately not built: the difference would not be something a homeowner could act on.
+// Reached only from the last step of the wizard, which hands the whole scenario over in the
+// URL (js/state.js). That is why the house here is *fixed* rather than merely shared: it was
+// settled in the wizard, and letting it move would break the one thing this page is for. Two
+// scenarios in different towns, or on different roofs, are not comparable — the difference
+// would not be something a homeowner could act on. Only the kit differs between the columns:
+// panel size, battery size, and which of the heat pump / electric car / air conditioning are
+// present, with their own settings.
+//
+// Both columns start identical to what the user already chose. That is deliberate: changing
+// one thing at a time is the only way a comparison answers a question, and a zero diff on
+// arrival makes the starting point obvious.
 //
 // All the maths is js/calc/scenario.js, shared with the wizard. This file is the two-column
 // shell: read the form, run each column, render, and diff them.
@@ -18,62 +24,73 @@ document.addEventListener("DOMContentLoaded", async () => {
   // pair of assumptions the wizard sizes with, kept here so the two pages agree.
   const KWP_PER_USABLE_M2 = 0.2 * 0.8;
 
-  // Starting kit for each column: a plain solar system against the same system with a battery
-  // and a heat pump, which is the comparison most people arrive wanting.
-  const PRESETS = {
-    a: { kwp: 6, batteryKwh: 0, hp: false, ev: false, ac: false },
-    b: { kwp: 6, batteryKwh: 8, hp: true, ev: false, ac: false },
-  };
+  const state = { a: { model: null, scenario: null }, b: { model: null, scenario: null } };
 
-  const state = {
-    a: { model: null, scenario: null },
-    b: { model: null, scenario: null },
-  };
+  // ---- the handed-over scenario ---------------------------------------------
+  const shared = ShareState.decode();
+  if (!shared) {
+    // Opened directly. A locked house needs a house to lock.
+    $("noStatePanel").hidden = false;
+    return;
+  }
 
-  // ---- data -----------------------------------------------------------------
   const [, cities] = await Promise.all([
     PV.load(),
     fetch("js/data/cities.json").then((r) => r.json()),
   ]);
 
-  const countrySelect = $("country");
-  countrySelect.innerHTML = cities.countries
-    .map((c) => `<option value="${c.code}">${c.name}</option>`)
-    .join("");
-  countrySelect.value = "CH";
+  const countryList = cities.cities[shared.country] || [];
+  const city = countryList.find((c) => c.name === shared.cityName) || countryList[0];
+  const countryName = (cities.countries.find((c) => c.code === shared.country) || {}).name || "";
 
-  function populateCities() {
-    const list = cities.cities[countrySelect.value] || [];
-    $("city").innerHTML = list.map((c, i) => `<option value="${i}">${c.name}</option>`).join("");
+  if (!city) {
+    $("noStatePanel").hidden = false;
+    return;
   }
 
-  const CURRENCY_BY_COUNTRY = {
-    CH: "CHF", GB: "GBP", SE: "SEK", NO: "NOK", DK: "DKK", PL: "PLN",
-    CZ: "CZK", HU: "HUF", RO: "RON", BG: "BGN",
+  // The house: fixed for the life of this page.
+  const house = {
+    city,
+    countryName,
+    orientation: Number(shared.orientation),
+    tilt: Number(shared.tilt),
+    consumption: Number(shared.consumption),
   };
-  let currencyTouched = false;
-  $("currency").addEventListener("change", () => {
-    currencyTouched = true;
+
+  $("housePanel").hidden = false;
+  $("assumptions").hidden = false;
+
+  // ---- prefill the editable, non-house inputs -------------------------------
+  const PREFILL = {
+    currency: "currency",
+    retailPrice: "retailPrice",
+    feedInTariff: "feedInTariff",
+    capexPerKwp: "capexPerKwp",
+    batteryCapexPerKwh: "batteryCapexPerKwh",
+    discountRate: "discountRate",
+    lifetime: "lifetime",
+    batteryLifetime: "batteryLifetime",
+    roundTrip: "roundTrip",
+    performanceRatio: "performanceRatio",
+    tariffEscalation: "tariffEscalation",
+  };
+  Object.entries(PREFILL).forEach(([key, id]) => {
+    if (shared[key] !== undefined && $(id)) $(id).value = shared[key];
   });
-  function syncCurrency() {
-    if (currencyTouched) return;
-    $("currency").value = CURRENCY_BY_COUNTRY[countrySelect.value] || "EUR";
-  }
 
-  function selectedCity() {
-    const list = cities.cities[countrySelect.value] || [];
-    return list[Number($("city").value)] || list[0];
-  }
-
-  populateCities();
-  syncCurrency();
+  const ORIENTATION_LABELS = {
+    "0": "South", "-45": "South-east", "45": "South-west", "-90": "East", "90": "West",
+  };
+  const TILT_LABELS = {
+    "0": "Flat roof", "15": "Shallow (15°)", "30": "Typical pitch (30°)", "45": "Steep (45°)",
+  };
 
   // ---- column markup --------------------------------------------------------
   // Generated from one template so the two columns cannot drift apart. Ids are suffixed with
-  // the column key.
+  // the column key. Both start from the kit the user already chose.
   function columnMarkup(col) {
-    const p = PRESETS[col];
-    const on = (v) => (v ? " checked" : "");
+    const on = (v) => (ShareState.isOn(v) ? " checked" : "");
+    const v = (key, fallback) => (shared[key] !== undefined ? shared[key] : fallback);
     return `
       <section class="compare-col" data-col="${col}">
         <h2>${LABELS[col]}</h2>
@@ -82,19 +99,19 @@ document.addEventListener("DOMContentLoaded", async () => {
           <div class="row">
             <div class="field">
               <label for="kwp-${col}">Solar (kWp)</label>
-              <input type="number" id="kwp-${col}" min="0" step="0.5" value="${p.kwp}" />
+              <input type="number" id="kwp-${col}" min="0" step="0.5" value="${v("kwp", 6)}" />
             </div>
             <div class="field">
               <label for="battery-${col}">Battery (kWh)</label>
-              <input type="number" id="battery-${col}" min="0" step="0.5" value="${p.batteryKwh}" />
+              <input type="number" id="battery-${col}" min="0" step="0.5" value="${v("batteryKwh", 0)}" />
             </div>
           </div>
 
           <p class="scenario-bar-label">Electric extras</p>
           <div class="scenario-toggles">
-            <label class="chip"><input type="checkbox" id="hp-${col}"${on(p.hp)} /> <span>Heat pump</span></label>
-            <label class="chip"><input type="checkbox" id="ev-${col}"${on(p.ev)} /> <span>Electric car</span></label>
-            <label class="chip"><input type="checkbox" id="ac-${col}"${on(p.ac)} /> <span>Air conditioning</span></label>
+            <label class="chip"><input type="checkbox" id="hp-${col}"${on(shared.hp)} /> <span>Heat pump</span></label>
+            <label class="chip"><input type="checkbox" id="ev-${col}"${on(shared.ev)} /> <span>Electric car</span></label>
+            <label class="chip"><input type="checkbox" id="ac-${col}"${on(shared.ac)} /> <span>Air conditioning</span></label>
           </div>
 
           <details class="advanced" data-asset-details="${col}">
@@ -102,7 +119,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             <div class="row">
               <div class="field">
                 <label for="hpArea-${col}">Heated floor area (m²)</label>
-                <input type="number" id="hpArea-${col}" min="10" step="5" value="140" />
+                <input type="number" id="hpArea-${col}" min="10" step="5" value="${v("hpArea", 140)}" />
               </div>
               <div class="field">
                 <label for="hpStandard-${col}">Building age / insulation</label>
@@ -113,35 +130,35 @@ document.addEventListener("DOMContentLoaded", async () => {
               <label for="hpSupply-${col}">Heat distribution</label>
               <select id="hpSupply-${col}">
                 <option value="35">Underfloor heating (efficient)</option>
-                <option value="45" selected>Mixed / large radiators</option>
+                <option value="45">Mixed / large radiators</option>
                 <option value="55">Old radiators (less efficient)</option>
               </select>
             </div>
             <div class="row">
               <div class="field">
                 <label for="evKm-${col}">Kilometres driven per year</label>
-                <input type="number" id="evKm-${col}" min="0" step="500" value="12000" />
+                <input type="number" id="evKm-${col}" min="0" step="500" value="${v("evKm", 12000)}" />
               </div>
               <div class="field">
                 <label for="evEfficiency-${col}">Consumption (kWh per 100 km)</label>
-                <input type="number" id="evEfficiency-${col}" min="5" step="0.5" value="18" />
+                <input type="number" id="evEfficiency-${col}" min="5" step="0.5" value="${v("evEfficiency", 18)}" />
               </div>
             </div>
             <div class="field">
               <label for="evStrategy-${col}">When do you charge?</label>
               <select id="evStrategy-${col}">
-                <option value="dumb" selected>Plug in when I get home (evening)</option>
+                <option value="dumb">Plug in when I get home (evening)</option>
                 <option value="solar">Charge during the day, from my own solar</option>
               </select>
             </div>
             <div class="row">
               <div class="field">
                 <label for="acArea-${col}">Cooled floor area (m²)</label>
-                <input type="number" id="acArea-${col}" min="5" step="5" value="80" />
+                <input type="number" id="acArea-${col}" min="5" step="5" value="${v("acArea", 80)}" />
               </div>
               <div class="field">
                 <label for="acSeer-${col}">Efficiency (SEER)</label>
-                <input type="number" id="acSeer-${col}" min="1.5" step="0.1" value="3" />
+                <input type="number" id="acSeer-${col}" min="1.5" step="0.1" value="${v("acSeer", 3)}" />
               </div>
             </div>
           </details>
@@ -157,6 +174,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           <div class="chart-frame"><canvas id="chartMonthly-${col}"></canvas></div>
         </figure>
 
+        <div class="col-energy" id="energy-${col}"></div>
         <div class="col-summary" id="summary-${col}"></div>
       </section>`;
   }
@@ -165,8 +183,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   COLUMNS.forEach((col) => {
     $(`hpStandard-${col}`).innerHTML = Object.entries(LoadProfiles.BUILDING_STANDARDS)
-      .map(([k, def]) => `<option value="${k}"${k === "mid" ? " selected" : ""}>${def.label}</option>`)
+      .map(([k, def]) => `<option value="${k}">${def.label}</option>`)
       .join("");
+    // Selects cannot be prefilled through the template's value attribute.
+    if (shared.hpStandard) $(`hpStandard-${col}`).value = shared.hpStandard;
+    if (shared.hpSupply) $(`hpSupply-${col}`).value = shared.hpSupply;
+    if (shared.evStrategy) $(`evStrategy-${col}`).value = shared.evStrategy;
   });
 
   // ---- reading the form -----------------------------------------------------
@@ -177,13 +199,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function paramsFor(col) {
     return {
-      site: selectedCity(),
-      country: countrySelect.options[countrySelect.selectedIndex].text,
+      site: house.city,
+      country: house.countryName,
       kwp: num(`kwp-${col}`),
-      tilt: num("tilt"),
-      aspect: num("orientation"),
+      tilt: house.tilt,
+      aspect: house.orientation,
       performanceRatio: num("performanceRatio"),
-      annualConsumptionKwh: num("consumption"),
+      annualConsumptionKwh: house.consumption,
       batteryKwh: num(`battery-${col}`),
       roundTripEfficiency: num("roundTrip"),
       capexPerKwp: num("capexPerKwp"),
@@ -215,8 +237,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       return acc;
     }, {});
 
-  // Every number on the page must be usable before anything is computed; unlike the wizard
-  // there are no steps to validate one at a time.
+  // Every number must be usable before anything is computed; unlike the wizard there are no
+  // steps to validate one at a time.
   function validate() {
     const problems = [];
     document.querySelectorAll("input[type=number]").forEach((input) => {
@@ -239,6 +261,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const INT_FORMAT = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 });
   const fmtInt = (v) => INT_FORMAT.format(Math.round(v));
   const ASSET_NAMES = { hp: "Heat pump", ev: "Electric car", ac: "Air conditioning" };
+  // The three whose purchase price the tool does not model.
+  const UNCOSTED = { hp: "heat pump", ev: "car and its charger", ac: "air conditioner" };
 
   let fmt;
   function buildFormatters(currency) {
@@ -257,9 +281,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
   }
 
+  const share = (v, total) =>
+    total > 0
+      ? `${fmt.kwh(v)} <span class="share">(${Math.round((v / total) * 100)}%)</span>`
+      : fmt.kwh(v);
+
   // ---- rendering ------------------------------------------------------------
-  // The tallest month across both columns. Both charts are drawn to it so their bars can be
-  // compared by eye — which is the entire point of putting them next to each other.
   function sharedMonthlyMax() {
     return Math.max(
       ...COLUMNS.flatMap((col) => state[col].scenario.chosen.buckets.map((b) => b.load))
@@ -270,7 +297,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     const m = state[col].model;
     const s = state[col].scenario;
     const worthIt = s.totalNpv > 0;
+    const produced = s.chosen.totalProduction;
+    const dash = '<span class="na">—</span>';
 
+    // Every row is rendered in both columns, with a dash where it does not apply. Two columns
+    // that grow different numbers of rows would put their charts at different heights, and
+    // charts you cannot scan across defeat the point of a side-by-side layout.
     $(`result-${col}`).innerHTML = `
       <p class="headline ${worthIt ? "good" : "bad"}">
         ${worthIt ? "+" : ""}${fmt.money(s.totalNpv)}
@@ -278,13 +310,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       <p class="hint headline-note">over ${m.lifetimeYears} years, after paying for the kit</p>
       <dl class="kv">
         <dt>Upfront cost</dt><dd>${fmt.money(s.totalCapex)}</dd>
-        <dt>Yearly bill</dt><dd>${fmt.money(s.hasBattery ? s.billBattery : s.billPv)}</dd>
+        <dt class="sub">…panels</dt><dd>${fmt.money(m.pvCapex)}</dd>
+        <dt class="sub">…battery</dt><dd>${s.hasBattery ? fmt.money(m.batteryCapex) : dash}</dd>
+        <dt>Yearly bill before solar</dt><dd>${fmt.money(s.billNow)}</dd>
+        <dt>Yearly bill now</dt><dd>${fmt.money(s.hasBattery ? s.billBattery : s.billPv)}</dd>
         <dt>Yearly saving</dt><dd>${fmt.money(s.billNow - (s.hasBattery ? s.billBattery : s.billPv))}</dd>
         <dt>Solar pays back in</dt><dd>${fmt.years(s.pvPayback)}</dd>
-        ${s.hasBattery ? `<dt>Battery pays back in</dt><dd>${fmt.years(s.battery.paybackYears)}</dd>` : ""}
-        <dt>Self-sufficiency</dt><dd>${fmt.pct(s.chosen.selfSufficiencyRate)}</dd>
-        <dt>Of your solar, used on site</dt><dd>${fmt.pct(s.chosen.selfConsumptionRate)}</dd>
-        <dt>Electricity used per year</dt><dd>${fmt.kwh(s.totalConsumption)}</dd>
+        <dt>Battery pays back in</dt><dd>${s.hasBattery ? fmt.years(s.battery.paybackYears) : dash}</dd>
+        <dt>Value of the panels</dt><dd>${fmt.money(s.pvNpv)}</dd>
+        <dt>Value of the battery</dt><dd>${s.hasBattery ? fmt.money(s.battery.npv) : dash}</dd>
       </dl>`;
 
     const monthly = s.chosen.buckets;
@@ -298,6 +332,26 @@ document.addEventListener("DOMContentLoaded", async () => {
       yMax,
     });
 
+    const throughput = Scenario.batteryThroughput(s.chosen);
+    $(`energy-${col}`).innerHTML = `
+      <h3>The energy, over a year</h3>
+      <dl class="kv">
+        <dt>Electricity used</dt><dd>${fmt.kwh(s.totalConsumption)}</dd>
+        <dt>Solar produced</dt><dd>${fmt.kwh(produced)}</dd>
+        <dt>Used straight away</dt><dd>${share(s.chosen.directSelfConsumed, produced)}</dd>
+        <dt>Stored in the battery</dt><dd>${s.hasBattery ? share(throughput, produced) : dash}</dd>
+        <dt class="sub">…of which came back out</dt>
+        <dd>${s.hasBattery ? fmt.kwh(s.chosen.batteryDischargeToLoad) : dash}</dd>
+        <dt class="sub">…of which lost charging</dt>
+        <dd>${s.hasBattery ? share(s.chosen.chargeLosses + s.chosen.dischargeLosses, produced) : dash}</dd>
+        <dt>Sent to the grid</dt><dd>${share(s.chosen.exported, produced)}</dd>
+        <dt>Bought from the grid</dt><dd>${fmt.kwh(s.chosen.imported)}</dd>
+        <dt>Self-sufficiency</dt><dd>${fmt.pct(s.chosen.selfSufficiencyRate)}</dd>
+        <dt>Of your solar, used on site</dt><dd>${fmt.pct(s.chosen.selfConsumptionRate)}</dd>
+        <dt>Battery full cycles a year</dt>
+        <dd>${s.hasBattery ? fmtInt(s.chosen.equivalentFullCycles) : dash}</dd>
+      </dl>`;
+
     // The "initial situation" summary: what this column actually is, in words, so a reader
     // scrolled down to the charts does not have to scroll back up to remember.
     const extras = Scenario.ASSET_KEYS.filter((k) => s.enabled[k]).map((k) => ASSET_NAMES[k]);
@@ -307,8 +361,37 @@ document.addEventListener("DOMContentLoaded", async () => {
         <li><strong>${m.kwp.toFixed(1)} kWp</strong> of panels — about ${fmtInt(m.kwp / KWP_PER_USABLE_M2)} m² of roof</li>
         <li><strong>${m.batteryKwh > 0 ? `${m.batteryKwh} kWh battery` : "No battery"}</strong></li>
         <li><strong>${extras.length ? extras.join(", ") : "No electric extras"}</strong></li>
-        <li>Produces ${fmt.kwh(s.chosen.totalProduction)} a year, against ${fmt.kwh(s.totalConsumption)} used</li>
       </ul>`;
+  }
+
+  // Only the panels and the battery are costed anywhere in this tool. A heat pump, a car or an
+  // air conditioner changes the electricity bill, and that change is in every figure above —
+  // but buying the thing is not. Saying so quietly in the assumptions panel is not enough when
+  // the headline is a money figure a reader will compare against another money figure.
+  function renderCostNotice() {
+    const missing = new Set();
+    COLUMNS.forEach((col) => {
+      Scenario.ASSET_KEYS.forEach((k) => {
+        if (state[col].scenario.enabled[k]) missing.add(k);
+      });
+    });
+
+    if (!missing.size) {
+      $("costNotice").hidden = true;
+      return;
+    }
+
+    const names = [...missing].map((k) => UNCOSTED[k]);
+    const list =
+      names.length === 1
+        ? names[0]
+        : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+    $("costNotice").hidden = false;
+    $("costNotice").innerHTML = `
+      <strong>What you pay for the ${list} is not included.</strong>
+      Only the panels and the battery are costed here. The extras change the electricity bill,
+      and that is in every figure on this page — but the price of buying and installing them
+      is not, so the value figures are not a full purchase decision for them.`;
   }
 
   function renderDelta() {
@@ -316,30 +399,42 @@ document.addEventListener("DOMContentLoaded", async () => {
     const b = state.b.scenario;
     const better = a.totalNpv >= b.totalNpv ? "a" : "b";
     const gap = Math.abs(a.totalNpv - b.totalNpv);
+    const billOf = (s) => (s.hasBattery ? s.billBattery : s.billPv);
+    const identical = gap < 1 && Math.abs(a.totalCapex - b.totalCapex) < 1 &&
+      Math.abs(a.totalConsumption - b.totalConsumption) < 1;
 
     const rows = [
       ["Value over the system's life", fmt.money(a.totalNpv), fmt.money(b.totalNpv),
        fmt.signedMoney(b.totalNpv - a.totalNpv)],
       ["Upfront cost", fmt.money(a.totalCapex), fmt.money(b.totalCapex),
        fmt.signedMoney(b.totalCapex - a.totalCapex)],
-      ["Yearly bill",
-       fmt.money(a.hasBattery ? a.billBattery : a.billPv),
-       fmt.money(b.hasBattery ? b.billBattery : b.billPv),
-       fmt.signedMoney((b.hasBattery ? b.billBattery : b.billPv) - (a.hasBattery ? a.billBattery : a.billPv))],
+      ["Yearly bill", fmt.money(billOf(a)), fmt.money(billOf(b)),
+       fmt.signedMoney(billOf(b) - billOf(a))],
+      ["Yearly saving",
+       fmt.money(a.billNow - billOf(a)), fmt.money(b.billNow - billOf(b)),
+       fmt.signedMoney((b.billNow - billOf(b)) - (a.billNow - billOf(a)))],
+      ["Solar produced", fmt.kwh(a.chosen.totalProduction), fmt.kwh(b.chosen.totalProduction),
+       fmt.signedKwh(b.chosen.totalProduction - a.chosen.totalProduction)],
       ["Self-sufficiency", fmt.pct(a.chosen.selfSufficiencyRate), fmt.pct(b.chosen.selfSufficiencyRate),
        fmt.pts(b.chosen.selfSufficiencyRate - a.chosen.selfSufficiencyRate)],
+      ["Of your solar, used on site",
+       fmt.pct(a.chosen.selfConsumptionRate), fmt.pct(b.chosen.selfConsumptionRate),
+       fmt.pts(b.chosen.selfConsumptionRate - a.chosen.selfConsumptionRate)],
+      ["Bought from the grid", fmt.kwh(a.chosen.imported), fmt.kwh(b.chosen.imported),
+       fmt.signedKwh(b.chosen.imported - a.chosen.imported)],
       ["Electricity used per year", fmt.kwh(a.totalConsumption), fmt.kwh(b.totalConsumption),
        fmt.signedKwh(b.totalConsumption - a.totalConsumption)],
     ];
 
     $("deltaBody").innerHTML = `
       <p class="verdict-line">
-        <strong>${LABELS[better]}</strong> is worth
-        <strong>${fmt.money(gap)}</strong> more over the system's life.
         ${
-          gap < 500
-            ? "That is close enough that the choice can rest on what you want rather than on the money."
-            : ""
+          identical
+            ? "Both columns are the same system — change the panels, the battery or the extras on one side to see what it does."
+            : `<strong>${LABELS[better]}</strong> is worth <strong>${fmt.money(gap)}</strong> more over the system's life.` +
+              (gap < 500
+                ? " That is close enough that the choice can rest on what you want rather than on the money."
+                : "")
         }
       </p>
       <div class="delta-table" role="table">
@@ -369,17 +464,28 @@ document.addEventListener("DOMContentLoaded", async () => {
     $("verdictBlock").hidden = false;
   }
 
+  function renderHouse() {
+    $("houseSummary").innerHTML = `
+      <dt>Town</dt><dd>${house.city.name}, ${house.countryName}</dd>
+      <dt>Roof</dt><dd>${ORIENTATION_LABELS[String(house.orientation)] || `${house.orientation}°`},
+        ${TILT_LABELS[String(house.tilt)] || `${house.tilt}°`}</dd>
+      <dt>Electricity used, before extras</dt><dd>${fmt.kwh(house.consumption)} a year</dd>`;
+  }
+
   function renderAssumptions() {
     const m = state.a.model;
     $("assumptions-body").innerHTML = `
       <ul>
         <li><strong>Screening estimate, not a quote.</strong> Treat these as a first indication,
         not an engineering study or a financial promise.</li>
+        <li><strong>Only the panels and the battery are costed.</strong> Buying and installing a
+        heat pump, an electric car or an air conditioner is not in any figure here — their
+        effect on your electricity bill is, but their price is not.</li>
         <li><strong>Sunlight and temperature</strong> are PVGIS measurements for
         ${m.site.name} (${m.country}) itself, and are identical for both columns.</li>
         <li><strong>Only the kit differs.</strong> Both columns share the house, the roof, the
         base electricity use and every tariff — that is what makes the comparison meaningful.
-        If you want to compare two towns or two tariffs, run the step-by-step version twice.</li>
+        To compare two towns or two tariffs, run the step-by-step version twice.</li>
         <li><strong>The extras are added on top</strong> of the same base consumption, so a
         column with a heat pump legitimately uses more electricity than one without. Compare
         the yearly bill and the value over the system's life, not the self-sufficiency alone —
@@ -425,6 +531,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
       const yMax = sharedMonthlyMax();
       COLUMNS.forEach((col) => renderColumn(col, yMax));
+      renderHouse();
+      renderCostNotice();
       renderDelta();
       renderAssumptions();
     }, 120);
@@ -437,10 +545,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     refresh();
   });
   document.addEventListener("change", (e) => {
-    if (e.target === countrySelect) {
-      populateCities();
-      syncCurrency();
-    }
     if (!e.target.matches("input[type=checkbox]")) invalidate();
     refresh();
   });
