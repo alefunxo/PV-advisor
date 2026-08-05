@@ -3,3 +3,7 @@ CLAUDE.md
 
 # Scratch smoke-test pages (see CLAUDE.md > Testing)
 _*.html
+
+# Byte-cache from running scripts/fetch_pvgis.py
+__pycache__/
+scripts/.pvgis-checkpoint.jsonl
