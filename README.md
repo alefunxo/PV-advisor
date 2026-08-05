@@ -52,6 +52,7 @@ js/calc/economics.js    NPV, payback, incremental battery case
 js/data/cities.json           per-city yield, seasonal shape, temperatures (offline-generated)
 js/data/regional-yield.json   tilt/azimuth correction factors by latitude band
 js/data/load-profiles.js      synthetic household + heat pump / EV / AC load profiles
+scripts/fetch_pvgis.py        regenerates both data files from PVGIS, offline
 ```
 
 ## Status
@@ -64,12 +65,22 @@ js/data/load-profiles.js      synthetic household + heat pump / EV / AC load pro
 | 4. Heat pump / EV / AC toggles | done |
 | 5. Results dashboard + charts | done |
 | 6. Two-scenario comparison mode | done |
-| 7. Polish, validation, mobile | partial |
+| 7. Polish, validation, mobile | done |
 | 8. Methodology page | done |
 | 9. Multilingual (DE / FR / ES / IT) | done |
 
 The interface language follows `?lang=`, then a remembered choice, then the browser's own
 preference, then English. Currency is chosen separately and is never tied to the language.
+
+Every input carries an upper as well as a lower bound, so a mistyped figure is refused rather
+than turned into a confident answer. If the sunlight data fails to load, the page says so
+instead of sitting there with an empty form.
+
+Keyboard and screen-reader use is supported deliberately, not incidentally: focus follows the
+wizard from step to step, a rejected field receives the caret, and anything that changes
+without a navigation — the results extras, an error, a failed data load — announces itself.
+Chart colours are checked against colour-vision simulation rather than chosen by eye, and every
+figure a chart encodes is also written out as text.
 
 ## Data sources
 
@@ -77,3 +88,17 @@ preference, then English. Currency is chosen separately and is never tied to the
   (European Commission JRC), fetched once offline per city and committed as static data.
   PVGIS sends no CORS headers, so the deployed site cannot call it at runtime.
 - Place names: [GeoNames](https://www.geonames.org/) `cities15000`, CC BY 4.0.
+
+## Regenerating the data
+
+```
+python scripts/fetch_pvgis.py grids --compare   # diff against what is committed, write nothing
+python scripts/fetch_pvgis.py grids             # tilt/azimuth factors  (~5 min)
+python scripts/fetch_pvgis.py cities            # all 1 210 cities      (~15 min, resumable)
+```
+
+Standard library only. Each city's yield, seasonal shape and temperatures are measured at that
+city's own coordinates — never interpolated from a grid, which in mountainous country is wrong
+by enough to invert a heat pump estimate. The orientation factors are the one interpolated
+quantity, and each latitude band averages four land points spread across its longitudes so that
+no single location's terrain travels with them.
