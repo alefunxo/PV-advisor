@@ -3,17 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>How this works — Solar Advisor</title>
+  <title data-i18n="method.title">How this works — Solar Advisor</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body class="doc-page">
   <main>
     <header class="page-header">
       <nav class="site-nav">
-        <a href="index.html">&larr; Back to the advisor</a>
+        <a href="index.html" data-i18n="method.navBack">← Back to the advisor</a>
+        <select id="langSelect" class="lang-picker" aria-label="Language"
+                data-i18n-attr="aria-label:nav.language"></select>
       </nav>
-      <h1>How this works</h1>
-      <p class="subtitle">
+      <h1 data-i18n="method.h1">How this works</h1>
+      <p class="subtitle" data-i18n="method.subtitle">
         The whole method, written out: where the numbers come from, what is calculated from
         what, and where the method stops being trustworthy.
       </p>
@@ -21,9 +23,13 @@
 
     <!-- The point of this page is trust, not compliance. This tool competes with installer
          spreadsheets, and being legible about the method is the main thing it has to offer,
-         so it is written as an explanation rather than as a disclaimer. -->
+         so it is written as an explanation rather than as a disclaimer.
+
+         The prose lives in js/i18n/methodology.<lang>.json rather than in the catalogue every
+         page loads: the wizard should not pay to download an essay it never shows. The English
+         text stays inline as the static fallback, exactly as on the other two pages. -->
     <section class="doc">
-      <p class="doc-intro">
+      <p class="doc-intro" data-i18n-html="method.intro">
         This is a <strong>screening tool</strong>. It answers "is solar worth looking into
         here, roughly, and does a battery help?" in a few seconds, in your browser, with
         nothing hidden. It is not an engineering study and it is not a quote. Everything below
@@ -32,31 +38,31 @@
       </p>
 
       <nav class="toc" aria-label="Contents">
-        <h2>On this page</h2>
+        <h2 data-i18n="method.toc.h2">On this page</h2>
         <ol>
-          <li><a href="#data">Where the data comes from</a></li>
-          <li><a href="#production">From a roof to an hourly production series</a></li>
-          <li><a href="#load">The household load profile</a></li>
-          <li><a href="#temperature">The temperature series</a></li>
-          <li><a href="#assets">Heat pump, electric car, air conditioning</a></li>
-          <li><a href="#dispatch">How the battery is operated</a></li>
-          <li><a href="#money">Money: bills, payback and NPV</a></li>
-          <li><a href="#limits">What this model cannot do</a></li>
+          <li><a href="#data" data-i18n="method.h.data">Where the data comes from</a></li>
+          <li><a href="#production" data-i18n="method.h.production">From a roof to an hourly production series</a></li>
+          <li><a href="#load" data-i18n="method.h.load">The household load profile</a></li>
+          <li><a href="#temperature" data-i18n="method.h.temperature">The temperature series</a></li>
+          <li><a href="#assets" data-i18n="method.h.assets">Heat pump, electric car, air conditioning</a></li>
+          <li><a href="#dispatch" data-i18n="method.h.dispatch">How the battery is operated</a></li>
+          <li><a href="#money" data-i18n="method.h.money">Money: bills, payback and NPV</a></li>
+          <li><a href="#limits" data-i18n="method.h.limits">What this model cannot do</a></li>
         </ol>
       </nav>
 
       <!-- ------------------------------------------------------------------ data -->
-      <h2 id="data">Where the data comes from</h2>
+      <h2 id="data" data-i18n="method.h.data">Where the data comes from</h2>
 
-      <p>
+      <p data-i18n="method.data.intro">
         Two outside sources, both fetched once, offline, and committed as static files. The
         deployed page never calls anything at runtime.
       </p>
 
       <dl class="doc-list">
-        <dt>Sunlight and temperature — <a href="https://re.jrc.ec.europa.eu/pvg_tools/en/">PVGIS
+        <dt data-i18n-html="method.data.pvgis.dt">Sunlight and temperature — <a href="https://re.jrc.ec.europa.eu/pvg_tools/en/">PVGIS
         v5.2</a> (European Commission JRC)</dt>
-        <dd>
+        <dd data-i18n-html="method.data.pvgis.dd">
           For each of <strong>1 210 towns and cities</strong> across the EU-27, the UK,
           Switzerland and Norway, three things were fetched <em>at that town's own
           coordinates</em>: its annual yield for a 35°-tilt south-facing system including 14%
@@ -65,22 +71,22 @@
           the <code>PVcalc</code> endpoint, temperatures from <code>MRcalc</code>.
         </dd>
 
-        <dt>Place names — <a href="https://www.geonames.org/">GeoNames</a> <code>cities15000</code>
+        <dt data-i18n-html="method.data.geonames.dt">Place names — <a href="https://www.geonames.org/">GeoNames</a> <code>cities15000</code>
         (CC BY 4.0)</dt>
-        <dd>
+        <dd data-i18n-html="method.data.geonames.dd">
           Up to the fifty most-populous places per country, under their local names.
         </dd>
       </dl>
 
-      <p>
+      <p data-i18n="method.data.cors">
         PVGIS sends no cross-origin headers, so a static site genuinely cannot call it from a
         browser — the lookup table is not a shortcut, it is the only way this can work without a
         server. Refreshing the data means re-running the offline fetch and committing the result.
       </p>
 
-      <h3>Why every town carries its own measurements</h3>
+      <h3 data-i18n="method.data.perTown.h3">Why every town carries its own measurements</h3>
 
-      <p>
+      <p data-i18n-html="method.data.perTown.p1">
         Yield, seasonal shape and temperature are all read at the town's own coordinates, never
         interpolated from surrounding points. In mountainous country that distinction is
         decisive: a valley city and a point a few kilometres away up the slope can differ by
@@ -90,7 +96,7 @@
         people actually live rather than nearby.
       </p>
 
-      <p>
+      <p data-i18n="method.data.perTown.p2">
         One quantity is interpolated rather than measured per town: the roof orientation
         correction. How much a tilted, rotated roof gains or loses against a 35° south
         reference depends on the sun's angle,
@@ -100,34 +106,45 @@
         linearly between the two bands your town falls between.
       </p>
 
-      <!-- ------------------------------------------------------------ production -->
-      <h2 id="production">From a roof to an hourly production series</h2>
+      <p data-i18n-html="method.data.perTown.p3">
+        The band factors themselves are measured rather than modelled, and each band averages
+        <strong>four land points spread across its longitudes</strong> — Spain, Portugal, Italy
+        and Greece at 40° N; Germany, Poland, Czechia and Belgium at 50° N; Norway, Sweden,
+        Finland and Estonia at 60° N — with the local horizon switched off. The averaging is
+        what makes the table honest. Because these are ratios, a sample point's overall
+        sunniness cancels out but its <em>asymmetry</em> does not: a single point outside Oslo
+        has hills to the east, and a table built there would hand one hillside's skyline to
+        every roof in Scandinavia.
+      </p>
 
-      <h3>System size</h3>
-      <p>
+      <!-- ------------------------------------------------------------ production -->
+      <h2 id="production" data-i18n="method.h.production">From a roof to an hourly production series</h2>
+
+      <h3 data-i18n="method.production.size.h3">System size</h3>
+      <p data-i18n-html="method.production.size.p">
         If you give a roof area rather than a system size, it is converted at
         <strong>0.2 kWp per m²</strong> of module (roughly a modern panel), with
         <strong>80%</strong> of the area you stated treated as actually usable — chimneys,
         setbacks and awkward corners. Give the kWp directly and neither assumption applies.
       </p>
 
-      <h3>Annual total</h3>
-      <p class="formula">
+      <h3 data-i18n="method.production.annual.h3">Annual total</h3>
+      <p class="formula" data-i18n="method.production.annual.formula">
         annual kWh = kWp × (the town's measured kWh/kWp at 35° south) × (orientation factor) ×
         (your performance ratio ÷ 0.86)
       </p>
-      <p>
+      <p data-i18n="method.production.annual.p">
         0.86 is the performance ratio behind the PVGIS figure — its default 14% system loss.
         Raising or lowering the performance ratio in the advanced settings scales the result
         against that reference rather than replacing it.
       </p>
 
-      <h3>Hourly shape</h3>
-      <p>
+      <h3 data-i18n="method.production.hourly.h3">Hourly shape</h3>
+      <p data-i18n="method.production.hourly.intro">
         The annual total is then spread over 8 760 hours in three steps:
       </p>
       <ol class="doc-steps">
-        <li>
+        <li data-i18n-html="method.production.hourly.step1">
           <strong>Within a day, closed-form solar geometry.</strong> Solar declination from the
           day of the year, hour angle from the hour (solar noon assumed at 12:00 local — the
           equation of time and your longitude within the time zone are below the resolution
@@ -136,17 +153,17 @@
           sun's elevation rather than the angle onto the panel, so an east-facing roof still
           produces something at noon.
         </li>
-        <li>
+        <li data-i18n-html="method.production.hourly.step2">
           <strong>Across the year, the measured envelope.</strong> Each month's geometric total
           is rescaled so the twelve monthly totals match the fractions PVGIS measured for your
           town. The shape <em>within</em> each month is left as geometry made it.
         </li>
-        <li>
+        <li data-i18n-html="method.production.hourly.step3">
           <strong>Finally, anchored on the measured annual total</strong> from the step above.
         </li>
       </ol>
 
-      <p>
+      <p data-i18n-html="method.production.hourly.why">
         Step 2 is not a refinement, it is load-bearing. Pure geometry gives a June-to-January
         production ratio of about 1.6 more or less everywhere. The measured ratios run from
         about <strong>1.5 in Madrid to 3.6 in central Europe to 9.4 in Oslo</strong> — cloud,
@@ -156,9 +173,9 @@
       </p>
 
       <!-- ----------------------------------------------------------------- load -->
-      <h2 id="load">The household load profile</h2>
+      <h2 id="load" data-i18n="method.h.load">The household load profile</h2>
 
-      <p>
+      <p data-i18n-html="method.load.p1">
         Your annual consumption — the figure from your bill — is spread over the year with a
         standard-load-profile-style residential shape: a morning peak, a daytime trough, a
         larger evening peak, a flatter and later weekend pattern, and a mild seasonal swing
@@ -166,12 +183,12 @@
         time. Weekdays and weekends alternate in the usual 5:2 mix; which calendar day is a
         Monday does not matter at this resolution.
       </p>
-      <p>
+      <p data-i18n="method.load.p2">
         The shape is relative and the whole series is then scaled so that it sums to exactly the
         annual figure you gave. That is deliberate: the annual number is something you actually
         know, and the shape is something nobody knows without a meter.
       </p>
-      <p>
+      <p data-i18n="method.load.p3">
         This is the model's weakest input and it is worth being blunt about it. It has no
         household in it — no shift work, no woodstove, no swimming pool, no one at home on
         Tuesdays. Two houses with identical annual consumption and very different daily rhythms
@@ -179,9 +196,9 @@
       </p>
 
       <!-- ---------------------------------------------------------- temperature -->
-      <h2 id="temperature">The temperature series</h2>
+      <h2 id="temperature" data-i18n="method.h.temperature">The temperature series</h2>
 
-      <p>
+      <p data-i18n-html="method.temperature.p1">
         Heat pumps and air conditioners respond to temperature, and a heat pump's efficiency
         depends on how cold it is <em>at the moment it runs</em>, so twelve monthly means are
         not enough. An hourly series is reconstructed from them: the monthly means are anchored
@@ -189,16 +206,16 @@
         points round off instead of kinking, and December wraps into January without a step),
         then a fixed <strong>±5 K day/night swing peaking at 15:00</strong> is laid on top.
       </p>
-      <p>
+      <p data-i18n="method.temperature.p2">
         What comes out is a smooth climatology, not weather. There are no cold snaps, no
         heatwaves, no still grey fortnights. It is adequate for annual energy — which is all
         this tool reports — and it must never be used to size anything for a peak day.
       </p>
 
       <!-- --------------------------------------------------------------- assets -->
-      <h2 id="assets">Heat pump, electric car, air conditioning</h2>
+      <h2 id="assets" data-i18n="method.h.assets">Heat pump, electric car, air conditioning</h2>
 
-      <p>
+      <p data-i18n-html="method.assets.intro">
         Each of the three is an independent 8 760-hour series <strong>added on top of</strong>
         your base load, so switching two on is just an element-wise sum. Crucially, they are all
         evaluated against the <em>same</em> panels and the same battery you chose — nothing is
@@ -206,23 +223,23 @@
         your self-sufficiency" a statement about the car rather than about a different system.
       </p>
 
-      <h3>Heat pump</h3>
-      <p>
+      <h3 data-i18n="method.assets.hp.h3">Heat pump</h3>
+      <p data-i18n="method.assets.hp.demand">
         Annual heat demand is floor area × an intensity for the building's vintage:
       </p>
       <dl class="doc-list compact">
-        <dt>Before 1980, little insulation</dt><dd>160 kWh/m²/year</dd>
-        <dt>1980–2000</dt><dd>105 kWh/m²/year</dd>
-        <dt>2000–2010</dt><dd>70 kWh/m²/year</dd>
-        <dt>After 2010, or fully renovated</dt><dd>45 kWh/m²/year</dd>
-        <dt>Passive house / Minergie-P</dt><dd>25 kWh/m²/year</dd>
+        <dt data-i18n="building.old">Before 1980, little insulation</dt><dd data-i18n="method.assets.hp.intensity.old">160 kWh/m²/year</dd>
+        <dt data-i18n="building.mid">1980–2000</dt><dd data-i18n="method.assets.hp.intensity.mid">105 kWh/m²/year</dd>
+        <dt data-i18n="building.recent">2000–2010</dt><dd data-i18n="method.assets.hp.intensity.recent">70 kWh/m²/year</dd>
+        <dt data-i18n="building.modern">After 2010, or fully renovated</dt><dd data-i18n="method.assets.hp.intensity.modern">45 kWh/m²/year</dd>
+        <dt data-i18n="building.passive">Passive house / Minergie-P</dt><dd data-i18n="method.assets.hp.intensity.passive">25 kWh/m²/year</dd>
       </dl>
-      <p>
+      <p data-i18n-html="method.assets.hp.degreeDays">
         That demand is distributed over the year by heating degree days below a
         <strong>15 °C base</strong> — the gap up to a ~20 °C indoor target is assumed to be
         covered by sunlight through the windows and by the people and appliances inside.
       </p>
-      <p>
+      <p data-i18n-html="method.assets.hp.dailyMean">
         Whether a day needs heat at all is decided from that day's <strong>mean</strong>
         temperature, the standard degree-day convention. Testing each hour on its own instead
         would put the heat pump to work on a cool July night, which no building with any thermal
@@ -230,14 +247,14 @@
         with a small floor so that a mild day spreads its demand instead of collapsing it onto
         one hour.
       </p>
-      <p>
+      <p data-i18n="method.assets.hp.copIntro">
         Electricity is then that hour's heat divided by that hour's coefficient of performance:
       </p>
-      <p class="formula">
+      <p class="formula" data-i18n-html="method.assets.hp.copFormula">
         COP = 0.42 × (T<sub>supply</sub> + 273.15) ÷ max(5, T<sub>supply</sub> −
         T<sub>outdoor</sub>), clamped to 1.6–5.5
       </p>
-      <p>
+      <p data-i18n-html="method.assets.hp.copWhy">
         — that is, 42% of the theoretical Carnot limit, which is about what a real machine
         achieves. Evaluating the COP hour by hour rather than using one seasonal figure is the
         whole point: a fixed COP would flatter exactly those midwinter hours when the machine
@@ -245,61 +262,61 @@
         T<sub>supply</sub> — underfloor heating 35 °C, mixed 45 °C, old radiators 55 °C — and it
         matters a great deal.
       </p>
-      <p>
+      <p data-i18n-html="method.assets.hp.spaceOnly">
         <strong>Space heating only.</strong> Domestic hot water is not modelled, so a household
         running its hot water off the same heat pump will use more than this shows.
       </p>
 
-      <h3>Electric car</h3>
-      <p>
+      <h3 data-i18n="method.assets.ev.h3">Electric car</h3>
+      <p data-i18n-html="method.assets.ev.energy">
         Annual energy is kilometres × consumption per 100 km, plus <strong>10% charging
         losses</strong>, because the meter sees more than the battery receives. That energy is
         spread over every day of the year with one of two shapes:
       </p>
       <ul>
-        <li><strong>Plug in when I get home</strong> — an evening peak, tapering overnight.</li>
-        <li><strong>Charge during the day</strong> — concentrated on the middle of the day.</li>
+        <li data-i18n-html="method.assets.ev.dumb"><strong>Plug in when I get home</strong> — an evening peak, tapering overnight.</li>
+        <li data-i18n-html="method.assets.ev.solar"><strong>Charge during the day</strong> — concentrated on the middle of the day.</li>
       </ul>
-      <p>
+      <p data-i18n="method.assets.ev.default">
         Both move exactly the same annual energy; only the timing differs, and the timing is the
         entire question for solar. The default is deliberately the unflattering one. Defaulting
         to solar-following charging would quietly inflate self-consumption for every user,
         including the majority whose car is not at home on a weekday afternoon.
       </p>
 
-      <h3>Air conditioning</h3>
-      <p>
+      <h3 data-i18n="method.assets.ac.h3">Air conditioning</h3>
+      <p data-i18n-html="method.assets.ac.demand">
         Cooling demand is floor area × cooling degree hours above a <strong>22 °C base</strong>
         × 0.00125 kWh per m² per degree-hour, divided by the SEER you set. Unlike heating this
         is evaluated <em>hourly</em> rather than on the daily mean, because cooling genuinely
         does respond to a hot afternoon in a way heating does not respond to a cold hour.
       </p>
-      <p>
+      <p data-i18n="method.assets.ac.fit">
         Of the three extras this is the only one that improves the solar match: it wants power
         exactly when the panels have it.
       </p>
 
       <!-- ------------------------------------------------------------- dispatch -->
-      <h2 id="dispatch">How the battery is operated</h2>
+      <h2 id="dispatch" data-i18n="method.h.dispatch">How the battery is operated</h2>
 
-      <p>
+      <p data-i18n="method.dispatch.intro">
         Every hour of the year, in order:
       </p>
       <ol class="doc-steps">
-        <li>Production meets whatever load is happening at that moment, directly.</li>
-        <li>Any surplus charges the battery — limited by the room left in it and by a power
+        <li data-i18n="method.dispatch.step1">Production meets whatever load is happening at that moment, directly.</li>
+        <li data-i18n-html="method.dispatch.step2">Any surplus charges the battery — limited by the room left in it and by a power
         limit of <strong>0.5 C</strong> (an 8 kWh battery charges at up to 4 kW).</li>
-        <li>Any remaining deficit is drawn from the battery, under the same power limit and
+        <li data-i18n="method.dispatch.step3">Any remaining deficit is drawn from the battery, under the same power limit and
         whatever charge it holds.</li>
-        <li>What is left over is exported; what is still missing is imported.</li>
+        <li data-i18n="method.dispatch.step4">What is left over is exported; what is still missing is imported.</li>
       </ol>
-      <p>
+      <p data-i18n-html="method.dispatch.efficiency">
         Round-trip efficiency is split evenly over the two conversions (its square root applied
         on the way in and again on the way out), and the capacity you enter is treated as
         <em>usable</em> capacity, not nameplate. The battery starts the year empty. Full cycles
         are reported as total energy stored ÷ usable capacity.
       </p>
-      <p>
+      <p data-i18n-html="method.dispatch.greedy">
         This rule is greedy and myopic: it knows nothing about the next hour. It never holds
         space back for an afternoon it can see coming, never buys cheap night electricity to
         sell or use later, never trades against a time-of-use tariff, and never manages its own
@@ -310,20 +327,20 @@
       </p>
 
       <!-- ---------------------------------------------------------------- money -->
-      <h2 id="money">Money: bills, payback and NPV</h2>
+      <h2 id="money" data-i18n="method.h.money">Money: bills, payback and NPV</h2>
 
-      <h3>What is being bought</h3>
-      <p class="formula">
+      <h3 data-i18n="method.money.capex.h3">What is being bought</h3>
+      <p class="formula" data-i18n-html="method.money.capex.formula">
         panels = kWp × your price per kWp &nbsp;&nbsp;·&nbsp;&nbsp; battery = kWh × your price
         per kWh
       </p>
 
-      <h3>What a year is worth</h3>
-      <p class="formula">
+      <h3 data-i18n="method.money.year.h3">What a year is worth</h3>
+      <p class="formula" data-i18n="method.money.year.formula">
         year's value = (solar you used yourself × retail price) + (solar you exported × feed-in
         tariff) − maintenance
       </p>
-      <p>
+      <p data-i18n-html="method.money.year.p">
         Maintenance is <strong>1% of the system cost per year</strong> for the panels, and zero
         for the battery on its own. Panel output falls <strong>0.5% per year</strong>. If you
         set a tariff escalation, both prices compound at that rate. Later years reuse the
@@ -332,24 +349,24 @@
         smaller than the uncertainty already sitting in the synthetic load profile.
       </p>
 
-      <h3>Your bill</h3>
-      <p class="formula">
+      <h3 data-i18n="method.money.bill.h3">Your bill</h3>
+      <p class="formula" data-i18n="method.money.bill.formula">
         bill = (imported × retail price) − (exported × feed-in tariff)
       </p>
-      <p>
+      <p data-i18n-html="method.money.bill.p">
         Standing charges and any fixed monthly fee are not in it, so compare the
         <em>difference</em> between the "before" and "after" bills rather than either figure
         against your actual bill.
       </p>
 
-      <h3>Payback and NPV</h3>
-      <p>
+      <h3 data-i18n="method.money.npv.h3">Payback and NPV</h3>
+      <p data-i18n-html="method.money.payback.p">
         <strong>Payback</strong> is the simple, undiscounted one: the cumulative cash position
         starts at minus the purchase price and the year it crosses zero is reported. The payback
         chart plots exactly that line, deliberately undiscounted — a discounted curve crossing
         somewhere other than the payback figure printed beside it would read as a contradiction.
       </p>
-      <p>
+      <p data-i18n-html="method.money.npv.p">
         <strong>NPV</strong> is the discounted verdict: each year's value divided by
         (1 + discount rate) raised to that year, summed over the system's life, minus the
         purchase price. Cash flows are treated as arriving at the end of each year. It is the
@@ -357,18 +374,18 @@
         something else with the money".
       </p>
 
-      <h3>The battery is judged incrementally</h3>
-      <p>
+      <h3 data-i18n="method.money.battery.h3">The battery is judged incrementally</h3>
+      <p data-i18n-html="method.money.battery.p1">
         This is the part most worth understanding. The battery is not compared against having no
         solar at all — it is compared against <em>the same panels without a battery</em>. Its
         entire earnings are the energy it moves out of the export column and into the
         self-consumption column:
       </p>
-      <p class="formula">
+      <p class="formula" data-i18n="method.money.battery.formula">
         battery's year = (extra energy used on site × retail price) − (export revenue given up ×
         feed-in tariff)
       </p>
-      <p>
+      <p data-i18n-html="method.money.battery.p2">
         So a battery's case is driven by the <strong>spread</strong> between what you pay for
         electricity and what you are paid for exporting it, not by the retail price. Where
         export is paid well, batteries struggle here; where export is paid badly, they do well.
@@ -376,77 +393,77 @@
         panels'. The headline figure on the results page is the panels' NPV plus the battery's.
       </p>
 
-      <h3>What is not costed</h3>
-      <p>
+      <h3 data-i18n="method.money.uncosted.h3">What is not costed</h3>
+      <p data-i18n-html="method.money.uncosted.p1">
         <strong>Only the panels and the battery.</strong> Buying and installing a heat pump, an
         electric car or an air conditioner appears in no figure anywhere in this tool. Their
         effect on your electricity bill is fully modelled; their price is not. Nor are grants,
         subsidies, tax relief, or the running cost of whatever the heat pump replaces — if you
         are switching from gas or oil, the saving on that fuel is real and it is not here.
       </p>
-      <p>
+      <p data-i18n="method.money.uncosted.p2">
         Every amount stays in the currency you entered the tariffs in. No exchange rates are
         applied anywhere.
       </p>
 
       <!-- --------------------------------------------------------------- limits -->
-      <h2 id="limits">What this model cannot do</h2>
+      <h2 id="limits" data-i18n="method.h.limits">What this model cannot do</h2>
 
-      <p>
+      <p data-i18n="method.limits.intro">
         All of these are consequences of the design, not bugs waiting to be tuned away. They are
         the price of a tool that runs entirely in your browser in a second.
       </p>
 
       <ul class="doc-limits">
-        <li>
+        <li data-i18n-html="method.limits.clouds">
           <strong>The sky has no clouds.</strong> The synthetic production series has no
           day-to-day variability, so runs of dull days and unusually bright ones both go
           missing. Day-scale surplus swings are understated, which makes battery utilisation
           slightly optimistic.
         </li>
-        <li>
+        <li data-i18n-html="method.limits.load">
           <strong>The load profile is synthetic.</strong> It is scaled to your annual
           consumption but shaped like a statistical average household, not yours.
         </li>
-        <li>
+        <li data-i18n-html="method.limits.dispatch">
           <strong>Dispatch is greedy and myopic.</strong> No foresight, no tariff arbitrage, no
           degradation management. A real optimiser does better, and by an amount this tool
           cannot tell you.
         </li>
-        <li>
+        <li data-i18n-html="method.limits.battery">
           <strong>The battery case is incremental.</strong> It is measured against the same
           panels without a battery, so it is driven by the retail/feed-in spread. A battery that
           looks poor here can still be worth having for backup power or for a time-of-use
           tariff, neither of which is modelled.
         </li>
-        <li>
+        <li data-i18n-html="method.limits.temperature">
           <strong>Temperatures are a smooth climatology.</strong> No extreme events, and the
           measurement is taken at the town itself — a house well up a valley side, or on a plain
           below a hill town, will differ.
         </li>
-        <li>
+        <li data-i18n-html="method.limits.optimisation">
           <strong>Nothing is optimised.</strong> The tool evaluates the system you described. It
           does not search for the best panel count or battery size, and the configuration you
           typed is very unlikely to be the best one available to you.
         </li>
-        <li>
+        <li data-i18n-html="method.limits.hotWater">
           <strong>Heat pump hot water is missing</strong>, and no asset's purchase price is
           included anywhere.
         </li>
-        <li>
+        <li data-i18n-html="method.limits.shading">
           <strong>Shading is not modelled at all.</strong> A tree, a neighbour's gable or a
           chimney can take a large bite out of real production, and nothing here will warn you
           about it.
         </li>
       </ul>
 
-      <p class="doc-close">
+      <p class="doc-close" data-i18n="method.close">
         If a figure here is going to inform a purchase, treat it as the thing that tells you
         whether the conversation is worth having — then have the conversation with someone who
         will come and look at the roof.
       </p>
 
-      <p class="doc-source">
+      <p class="doc-source" data-i18n-html="method.source">
         The calculation is a handful of plain, dependency-free JavaScript files, and every
         constant quoted above is in them: <code>js/calc/pv.js</code> (yield and hourly
         production), <code>js/calc/climate.js</code> (temperature),
@@ -457,12 +474,26 @@
     </section>
 
     <footer class="page-footer">
-      <p>
+      <p data-i18n-html="footer.credit">
         Sunlight data from <a href="https://re.jrc.ec.europa.eu/pvg_tools/en/">PVGIS</a> (European
         Commission JRC). Place names from <a href="https://www.geonames.org/">GeoNames</a>
         (CC&nbsp;BY&nbsp;4.0). This is a screening tool, not a quote or an engineering study.
       </p>
+      <p data-i18n-html="footer.provenance">
+        Vibe-coded by Alejandro Pena-Bello — the whole source is on
+        <a href="https://github.com/alefunxo/PV-advisor">GitHub</a>. A more advanced,
+        solver-based version of this tool lives at
+        <a href="https://gitlab.hevs.ch/ted/screen_project">gitlab.hevs.ch/ted/screen_project</a>
+        and will be open sourced shortly.
+      </p>
     </footer>
   </main>
+
+  <script src="js/i18n.js"></script>
+  <script>
+    // The one page with no calculation on it, so it loads the catalogue and nothing else.
+    // "methodology" is an extra bundle: the essay is fetched only by the page that shows it.
+    document.addEventListener("DOMContentLoaded", () => I18n.init({ bundles: ["methodology"] }));
+  </script>
 </body>
 </html>

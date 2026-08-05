@@ -14,17 +14,28 @@
 //
 // All the maths is js/calc/scenario.js, shared with the wizard. This file is the two-column
 // shell: read the form, run each column, render, and diff them.
+//
+// Milestone 9: every string here comes from js/i18n/<lang>.json as a whole sentence with
+// {named} slots. The language arrives in the same URL that carries the scenario, so a link
+// pasted to a neighbour opens in the language it was sent in.
 
 document.addEventListener("DOMContentLoaded", async () => {
   const $ = (id) => document.getElementById(id);
   const num = (id) => Number($(id).value);
   const COLUMNS = ["a", "b"];
-  const LABELS = { a: "System A", b: "System B" };
+  // Translated once per render rather than held in a constant: the label moves with the
+  // language, the letter does not.
+  const systemName = (col) => I18n.t(`compare.system.${col}`);
+  const t = (key, vars) => I18n.t(key, vars);
   // Modules are roughly 200 W/m² and installers rarely fill every square metre — the same
   // pair of assumptions the wizard sizes with, kept here so the two pages agree.
   const KWP_PER_USABLE_M2 = 0.2 * 0.8;
 
   const state = { a: { model: null, scenario: null }, b: { model: null, scenario: null } };
+
+  // The catalogue comes first: the no-scenario fallback below is a dead end, and it has to be
+  // legible in the reader's language when they hit it.
+  await I18n.init();
 
   // ---- the handed-over scenario ---------------------------------------------
   const shared = ShareState.decode();
@@ -34,24 +45,41 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  const [, cities] = await Promise.all([
-    PV.load(),
-    fetch("js/data/cities.json").then((r) => r.json()),
-  ]);
+  // fetch() only rejects on a network failure: a 404 arrives as an HTML body and would fail
+  // much later as a syntax error, so the status is checked where it is still legible.
+  const fetchJson = async (url) => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`${url} → ${res.status}`);
+    return res.json();
+  };
+
+  let cities;
+  try {
+    [, cities] = await Promise.all([PV.load(), fetchJson("js/data/cities.json")]);
+  } catch (err) {
+    // There is a house; the data behind it did not arrive. Distinct from the panel above,
+    // which is the case of no house at all.
+    console.error("Site data failed to load:", err);
+    $("dataErrorPanel").hidden = false;
+    $("dataErrorRetry").addEventListener("click", () => window.location.reload());
+    return;
+  }
 
   const countryList = cities.cities[shared.country] || [];
   const city = countryList.find((c) => c.name === shared.cityName) || countryList[0];
-  const countryName = (cities.countries.find((c) => c.code === shared.country) || {}).name || "";
+  const countryFallback = (cities.countries.find((c) => c.code === shared.country) || {}).name || "";
 
   if (!city) {
     $("noStatePanel").hidden = false;
     return;
   }
 
-  // The house: fixed for the life of this page.
+  // The house: fixed for the life of this page. The country's *name* is not part of it —
+  // that follows the language, so it is resolved at render time rather than frozen here.
+  const countryName = () => I18n.country(shared.country, countryFallback);
+
   const house = {
     city,
-    countryName,
     orientation: Number(shared.orientation),
     tilt: Number(shared.tilt),
     consumption: Number(shared.consumption),
@@ -78,87 +106,86 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (shared[key] !== undefined && $(id)) $(id).value = shared[key];
   });
 
-  const ORIENTATION_LABELS = {
-    "0": "South", "-45": "South-east", "45": "South-west", "-90": "East", "90": "West",
-  };
-  const TILT_LABELS = {
-    "0": "Flat roof", "15": "Shallow (15°)", "30": "Typical pitch (30°)", "45": "Steep (45°)",
-  };
+  // The wizard's dropdown wording is longer than a one-line summary wants ("South — best"), so
+  // the read-only house summary has its own short forms.
+  const ASPECT_KEYS = { "0": "s", "-45": "se", "45": "sw", "-90": "e", "90": "w" };
+  const TILT_KEYS = { "0": "tilt.flat", "15": "tilt.shallow", "30": "tilt.typical", "45": "tilt.steep" };
 
   // ---- column markup --------------------------------------------------------
   // Generated from one template so the two columns cannot drift apart. Ids are suffixed with
-  // the column key. Both start from the kit the user already chose.
+  // the column key. Both start from the kit the user already chose. It is rebuilt on a language
+  // change, which is why the current input values are read back first.
   function columnMarkup(col) {
     const on = (v) => (ShareState.isOn(v) ? " checked" : "");
     const v = (key, fallback) => (shared[key] !== undefined ? shared[key] : fallback);
     return `
       <section class="compare-col" data-col="${col}">
-        <h2>${LABELS[col]}</h2>
+        <h2>${systemName(col)}</h2>
 
         <div class="col-inputs">
           <div class="row">
             <div class="field">
-              <label for="kwp-${col}">Solar (kWp)</label>
-              <input type="number" id="kwp-${col}" min="0" step="0.5" value="${v("kwp", 6)}" />
+              <label for="kwp-${col}">${t("compare.col.kwp")}</label>
+              <input type="number" id="kwp-${col}" min="0" max="100" step="0.5" value="${v("kwp", 6)}" />
             </div>
             <div class="field">
-              <label for="battery-${col}">Battery (kWh)</label>
-              <input type="number" id="battery-${col}" min="0" step="0.5" value="${v("batteryKwh", 0)}" />
+              <label for="battery-${col}">${t("compare.col.battery")}</label>
+              <input type="number" id="battery-${col}" min="0" max="100" step="0.5" value="${v("batteryKwh", 0)}" />
             </div>
           </div>
 
-          <p class="scenario-bar-label">Electric extras</p>
+          <p class="scenario-bar-label">${t("compare.col.extras")}</p>
           <div class="scenario-toggles">
-            <label class="chip"><input type="checkbox" id="hp-${col}"${on(shared.hp)} /> <span>Heat pump</span></label>
-            <label class="chip"><input type="checkbox" id="ev-${col}"${on(shared.ev)} /> <span>Electric car</span></label>
-            <label class="chip"><input type="checkbox" id="ac-${col}"${on(shared.ac)} /> <span>Air conditioning</span></label>
+            <label class="chip"><input type="checkbox" id="hp-${col}"${on(shared.hp)} /> <span>${t("asset.hp.name")}</span></label>
+            <label class="chip"><input type="checkbox" id="ev-${col}"${on(shared.ev)} /> <span>${t("asset.ev.name")}</span></label>
+            <label class="chip"><input type="checkbox" id="ac-${col}"${on(shared.ac)} /> <span>${t("asset.ac.name")}</span></label>
           </div>
 
           <details class="advanced" data-asset-details="${col}">
-            <summary>Extras settings</summary>
+            <summary>${t("compare.col.extrasSettings")}</summary>
             <div class="row">
               <div class="field">
-                <label for="hpArea-${col}">Heated floor area (m²)</label>
-                <input type="number" id="hpArea-${col}" min="10" step="5" value="${v("hpArea", 140)}" />
+                <label for="hpArea-${col}">${t("hp.area")}</label>
+                <input type="number" id="hpArea-${col}" min="10" max="1000" step="5" value="${v("hpArea", 140)}" />
               </div>
               <div class="field">
-                <label for="hpStandard-${col}">Building age / insulation</label>
+                <label for="hpStandard-${col}">${t("hp.standard")}</label>
                 <select id="hpStandard-${col}"></select>
               </div>
             </div>
             <div class="field">
-              <label for="hpSupply-${col}">Heat distribution</label>
+              <label for="hpSupply-${col}">${t("hp.supply")}</label>
               <select id="hpSupply-${col}">
-                <option value="35">Underfloor heating (efficient)</option>
-                <option value="45">Mixed / large radiators</option>
-                <option value="55">Old radiators (less efficient)</option>
+                <option value="35">${t("hpSupply.35")}</option>
+                <option value="45">${t("hpSupply.45")}</option>
+                <option value="55">${t("hpSupply.55")}</option>
               </select>
             </div>
             <div class="row">
               <div class="field">
-                <label for="evKm-${col}">Kilometres driven per year</label>
-                <input type="number" id="evKm-${col}" min="0" step="500" value="${v("evKm", 12000)}" />
+                <label for="evKm-${col}">${t("ev.km")}</label>
+                <input type="number" id="evKm-${col}" min="0" max="60000" step="500" value="${v("evKm", 12000)}" />
               </div>
               <div class="field">
-                <label for="evEfficiency-${col}">Consumption (kWh per 100 km)</label>
-                <input type="number" id="evEfficiency-${col}" min="5" step="0.5" value="${v("evEfficiency", 18)}" />
+                <label for="evEfficiency-${col}">${t("ev.efficiency")}</label>
+                <input type="number" id="evEfficiency-${col}" min="5" max="60" step="0.5" value="${v("evEfficiency", 18)}" />
               </div>
             </div>
             <div class="field">
-              <label for="evStrategy-${col}">When do you charge?</label>
+              <label for="evStrategy-${col}">${t("ev.strategy")}</label>
               <select id="evStrategy-${col}">
-                <option value="dumb">Plug in when I get home (evening)</option>
-                <option value="solar">Charge during the day, from my own solar</option>
+                <option value="dumb">${t("evStrategy.dumb")}</option>
+                <option value="solar">${t("evStrategy.solar")}</option>
               </select>
             </div>
             <div class="row">
               <div class="field">
-                <label for="acArea-${col}">Cooled floor area (m²)</label>
-                <input type="number" id="acArea-${col}" min="5" step="5" value="${v("acArea", 80)}" />
+                <label for="acArea-${col}">${t("ac.area")}</label>
+                <input type="number" id="acArea-${col}" min="5" max="1000" step="5" value="${v("acArea", 80)}" />
               </div>
               <div class="field">
-                <label for="acSeer-${col}">Efficiency (SEER)</label>
-                <input type="number" id="acSeer-${col}" min="1.5" step="0.1" value="${v("acSeer", 3)}" />
+                <label for="acSeer-${col}">${t("ac.seer")}</label>
+                <input type="number" id="acSeer-${col}" min="1.5" max="10" step="0.1" value="${v("acSeer", 3)}" />
               </div>
             </div>
           </details>
@@ -168,10 +195,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         <figure class="chart-card">
           <figcaption>
-            <h3>Where the electricity came from</h3>
-            <p class="hint">Each bar is that month's total use.</p>
+            <h3>${t("compare.chart.title")}</h3>
+            <p class="hint">${t("compare.chart.hint")}</p>
           </figcaption>
-          <div class="chart-frame"><canvas id="chartMonthly-${col}"></canvas></div>
+          <!-- Hidden from assistive tech rather than announced as an unlabelled graphic:
+               every number in it is written out in the energy block just below. -->
+          <div class="chart-frame"><canvas id="chartMonthly-${col}" aria-hidden="true"></canvas></div>
         </figure>
 
         <div class="col-energy" id="energy-${col}"></div>
@@ -179,17 +208,51 @@ document.addEventListener("DOMContentLoaded", async () => {
       </section>`;
   }
 
-  $("compareGrid").innerHTML = COLUMNS.map(columnMarkup).join("");
+  // The inputs are the state of this page, so rebuilding the markup on a language change has
+  // to carry them across rather than reset the user to what the wizard handed over.
+  const COLUMN_INPUTS = ["kwp", "battery", "hpArea", "hpStandard", "hpSupply", "evKm",
+    "evEfficiency", "evStrategy", "acArea", "acSeer"];
 
-  COLUMNS.forEach((col) => {
-    $(`hpStandard-${col}`).innerHTML = Object.entries(LoadProfiles.BUILDING_STANDARDS)
-      .map(([k, def]) => `<option value="${k}">${def.label}</option>`)
-      .join("");
-    // Selects cannot be prefilled through the template's value attribute.
-    if (shared.hpStandard) $(`hpStandard-${col}`).value = shared.hpStandard;
-    if (shared.hpSupply) $(`hpSupply-${col}`).value = shared.hpSupply;
-    if (shared.evStrategy) $(`evStrategy-${col}`).value = shared.evStrategy;
-  });
+  function readColumnInputs() {
+    if (!$("kwp-a")) return null;
+    const snapshot = {};
+    COLUMNS.forEach((col) => {
+      snapshot[col] = { values: {}, checked: {} };
+      COLUMN_INPUTS.forEach((name) => {
+        snapshot[col].values[name] = $(`${name}-${col}`).value;
+      });
+      Scenario.ASSET_KEYS.forEach((k) => {
+        snapshot[col].checked[k] = $(`${k}-${col}`).checked;
+      });
+    });
+    return snapshot;
+  }
+
+  function buildColumns(snapshot) {
+    $("compareGrid").innerHTML = COLUMNS.map(columnMarkup).join("");
+
+    COLUMNS.forEach((col) => {
+      $(`hpStandard-${col}`).innerHTML = Object.entries(LoadProfiles.BUILDING_STANDARDS)
+        .map(([k, def]) => `<option value="${k}">${t(def.labelKey)}</option>`)
+        .join("");
+      // Selects cannot be prefilled through the template's value attribute.
+      if (shared.hpStandard) $(`hpStandard-${col}`).value = shared.hpStandard;
+      if (shared.hpSupply) $(`hpSupply-${col}`).value = shared.hpSupply;
+      if (shared.evStrategy) $(`evStrategy-${col}`).value = shared.evStrategy;
+    });
+
+    if (!snapshot) return;
+    COLUMNS.forEach((col) => {
+      COLUMN_INPUTS.forEach((name) => {
+        $(`${name}-${col}`).value = snapshot[col].values[name];
+      });
+      Scenario.ASSET_KEYS.forEach((k) => {
+        $(`${k}-${col}`).checked = snapshot[col].checked[k];
+      });
+    });
+  }
+
+  buildColumns(null);
 
   // ---- reading the form -----------------------------------------------------
   const numOr = (id, fallback) => {
@@ -200,7 +263,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   function paramsFor(col) {
     return {
       site: house.city,
-      country: house.countryName,
       kwp: num(`kwp-${col}`),
       tilt: house.tilt,
       aspect: house.orientation,
@@ -258,32 +320,47 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // ---- formatting -----------------------------------------------------------
-  const INT_FORMAT = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 });
-  const fmtInt = (v) => INT_FORMAT.format(Math.round(v));
-  const ASSET_NAMES = { hp: "Heat pump", ev: "Electric car", ac: "Air conditioning" };
-  // The three whose purchase price the tool does not model.
-  const UNCOSTED = { hp: "heat pump", ev: "car and its charger", ac: "air conditioner" };
+  // Grouping and decimal marks follow the language; the currency does not, and no exchange
+  // rate is applied anywhere.
+  const integer = (v) =>
+    new Intl.NumberFormat(I18n.locale, { maximumFractionDigits: 0 }).format(Math.round(v));
+  const compact = (v) =>
+    new Intl.NumberFormat(I18n.locale, { maximumFractionDigits: 1 }).format(v);
+  const decimal = (v, digits) =>
+    new Intl.NumberFormat(I18n.locale, {
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
+    }).format(v);
 
   let fmt;
   function buildFormatters(currency) {
-    const money = new Intl.NumberFormat("en-GB", {
+    const money = new Intl.NumberFormat(I18n.locale, {
       style: "currency", currency, maximumFractionDigits: 0,
     });
-    const plain = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 });
+    const percent = new Intl.NumberFormat(I18n.locale, {
+      style: "percent", maximumFractionDigits: 0,
+    });
     fmt = {
       money: (v) => money.format(Math.round(v)),
       signedMoney: (v) => (v > 0 ? `+${money.format(Math.round(v))}` : money.format(Math.round(v))),
-      kwh: (v) => `${plain.format(Math.round(v))} kWh`,
-      signedKwh: (v) => `${v > 0 ? "+" : ""}${plain.format(Math.round(v))} kWh`,
-      pct: (v) => `${Math.round(v * 100)}%`,
-      pts: (v) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(Math.round(v * 100))} pts`,
-      years: (v) => (isFinite(v) ? `${v.toFixed(1)} years` : "never"),
+      kwh: (v) => t("unit.kwh", { value: integer(v) }),
+      signedKwh: (v) => t("unit.kwh", { value: `${v > 0 ? "+" : ""}${integer(v)}` }),
+      pct: (v) => percent.format(v),
+      // Percentage *points*, not percent: the difference between two rates. The minus sign is
+      // the typographic one, to match the "B − A" column header.
+      pts: (v) =>
+        t("unit.points", {
+          value: `${v > 0 ? "+" : v < 0 ? "−" : ""}${integer(Math.abs(v * 100))}`,
+        }),
+      years: (v) => (isFinite(v) ? t("unit.years", { value: decimal(v, 1) }) : t("unit.never")),
+      kwp: (v) => decimal(v, 1),
+      num: (v) => compact(v),
     };
   }
 
   const share = (v, total) =>
     total > 0
-      ? `${fmt.kwh(v)} <span class="share">(${Math.round((v / total) * 100)}%)</span>`
+      ? `${fmt.kwh(v)} <span class="share">(${fmt.pct(v / total)})</span>`
       : fmt.kwh(v);
 
   // ---- rendering ------------------------------------------------------------
@@ -305,25 +382,25 @@ document.addEventListener("DOMContentLoaded", async () => {
     // charts you cannot scan across defeat the point of a side-by-side layout.
     $(`result-${col}`).innerHTML = `
       <p class="headline ${worthIt ? "good" : "bad"}">
-        ${worthIt ? "+" : ""}${fmt.money(s.totalNpv)}
+        ${fmt.signedMoney(s.totalNpv)}
       </p>
-      <p class="hint headline-note">over ${m.lifetimeYears} years, after paying for the kit</p>
+      <p class="hint headline-note">${t("compare.result.note", { years: m.lifetimeYears })}</p>
       <dl class="kv">
-        <dt>Upfront cost</dt><dd>${fmt.money(s.totalCapex)}</dd>
-        <dt class="sub">…panels</dt><dd>${fmt.money(m.pvCapex)}</dd>
-        <dt class="sub">…battery</dt><dd>${s.hasBattery ? fmt.money(m.batteryCapex) : dash}</dd>
-        <dt>Yearly bill before solar</dt><dd>${fmt.money(s.billNow)}</dd>
-        <dt>Yearly bill now</dt><dd>${fmt.money(s.hasBattery ? s.billBattery : s.billPv)}</dd>
-        <dt>Yearly saving</dt><dd>${fmt.money(s.billNow - (s.hasBattery ? s.billBattery : s.billPv))}</dd>
-        <dt>Solar pays back in</dt><dd>${fmt.years(s.pvPayback)}</dd>
-        <dt>Battery pays back in</dt><dd>${s.hasBattery ? fmt.years(s.battery.paybackYears) : dash}</dd>
-        <dt>Value of the panels</dt><dd>${fmt.money(s.pvNpv)}</dd>
-        <dt>Value of the battery</dt><dd>${s.hasBattery ? fmt.money(s.battery.npv) : dash}</dd>
+        <dt>${t("compare.result.upfront")}</dt><dd>${fmt.money(s.totalCapex)}</dd>
+        <dt class="sub">${t("compare.result.panels")}</dt><dd>${fmt.money(m.pvCapex)}</dd>
+        <dt class="sub">${t("compare.result.battery")}</dt><dd>${s.hasBattery ? fmt.money(m.batteryCapex) : dash}</dd>
+        <dt>${t("compare.result.billBefore")}</dt><dd>${fmt.money(s.billNow)}</dd>
+        <dt>${t("compare.result.billNow")}</dt><dd>${fmt.money(s.hasBattery ? s.billBattery : s.billPv)}</dd>
+        <dt>${t("compare.result.saving")}</dt><dd>${fmt.money(s.billNow - (s.hasBattery ? s.billBattery : s.billPv))}</dd>
+        <dt>${t("compare.result.pvPayback")}</dt><dd>${fmt.years(s.pvPayback)}</dd>
+        <dt>${t("compare.result.batteryPayback")}</dt><dd>${s.hasBattery ? fmt.years(s.battery.paybackYears) : dash}</dd>
+        <dt>${t("compare.result.pvValue")}</dt><dd>${fmt.money(s.pvNpv)}</dd>
+        <dt>${t("compare.result.batteryValue")}</dt><dd>${s.hasBattery ? fmt.money(s.battery.npv) : dash}</dd>
       </dl>`;
 
     const monthly = s.chosen.buckets;
     Charts.monthly(`chartMonthly-${col}`, {
-      labels: Aggregate.MONTH_LABELS,
+      labels: Aggregate.monthLabels(I18n.locale),
       direct: monthly.map((b) => b.directSelfConsumed),
       battery: monthly.map((b) => b.batteryDischargeToLoad),
       grid: monthly.map((b) => b.imported),
@@ -334,33 +411,40 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const throughput = Scenario.batteryThroughput(s.chosen);
     $(`energy-${col}`).innerHTML = `
-      <h3>The energy, over a year</h3>
+      <h3>${t("compare.energy.h3")}</h3>
       <dl class="kv">
-        <dt>Electricity used</dt><dd>${fmt.kwh(s.totalConsumption)}</dd>
-        <dt>Solar produced</dt><dd>${fmt.kwh(produced)}</dd>
-        <dt>Used straight away</dt><dd>${share(s.chosen.directSelfConsumed, produced)}</dd>
-        <dt>Stored in the battery</dt><dd>${s.hasBattery ? share(throughput, produced) : dash}</dd>
-        <dt class="sub">…of which came back out</dt>
+        <dt>${t("compare.energy.used")}</dt><dd>${fmt.kwh(s.totalConsumption)}</dd>
+        <dt>${t("compare.energy.produced")}</dt><dd>${fmt.kwh(produced)}</dd>
+        <dt>${t("compare.energy.direct")}</dt><dd>${share(s.chosen.directSelfConsumed, produced)}</dd>
+        <dt>${t("compare.energy.stored")}</dt><dd>${s.hasBattery ? share(throughput, produced) : dash}</dd>
+        <dt class="sub">${t("compare.energy.storedOut")}</dt>
         <dd>${s.hasBattery ? fmt.kwh(s.chosen.batteryDischargeToLoad) : dash}</dd>
-        <dt class="sub">…of which lost charging</dt>
+        <dt class="sub">${t("compare.energy.storedLost")}</dt>
         <dd>${s.hasBattery ? share(s.chosen.chargeLosses + s.chosen.dischargeLosses, produced) : dash}</dd>
-        <dt>Sent to the grid</dt><dd>${share(s.chosen.exported, produced)}</dd>
-        <dt>Bought from the grid</dt><dd>${fmt.kwh(s.chosen.imported)}</dd>
-        <dt>Self-sufficiency</dt><dd>${fmt.pct(s.chosen.selfSufficiencyRate)}</dd>
-        <dt>Of your solar, used on site</dt><dd>${fmt.pct(s.chosen.selfConsumptionRate)}</dd>
-        <dt>Battery full cycles a year</dt>
-        <dd>${s.hasBattery ? fmtInt(s.chosen.equivalentFullCycles) : dash}</dd>
+        <dt>${t("compare.energy.exported")}</dt><dd>${share(s.chosen.exported, produced)}</dd>
+        <dt>${t("compare.energy.imported")}</dt><dd>${fmt.kwh(s.chosen.imported)}</dd>
+        <dt>${t("compare.energy.selfSufficiency")}</dt><dd>${fmt.pct(s.chosen.selfSufficiencyRate)}</dd>
+        <dt>${t("compare.energy.selfConsumption")}</dt><dd>${fmt.pct(s.chosen.selfConsumptionRate)}</dd>
+        <dt>${t("compare.energy.cycles")}</dt>
+        <dd>${s.hasBattery ? integer(s.chosen.equivalentFullCycles) : dash}</dd>
       </dl>`;
 
     // The "initial situation" summary: what this column actually is, in words, so a reader
     // scrolled down to the charts does not have to scroll back up to remember.
-    const extras = Scenario.ASSET_KEYS.filter((k) => s.enabled[k]).map((k) => ASSET_NAMES[k]);
+    const extras = Scenario.ASSET_KEYS.filter((k) => s.enabled[k]).map((k) => t(`asset.${k}.name`));
     $(`summary-${col}`).innerHTML = `
-      <h3>What ${LABELS[col]} is</h3>
+      <h3>${t("compare.summary.h3", { system: systemName(col) })}</h3>
       <ul class="summary-list">
-        <li><strong>${m.kwp.toFixed(1)} kWp</strong> of panels — about ${fmtInt(m.kwp / KWP_PER_USABLE_M2)} m² of roof</li>
-        <li><strong>${m.batteryKwh > 0 ? `${m.batteryKwh} kWh battery` : "No battery"}</strong></li>
-        <li><strong>${extras.length ? extras.join(", ") : "No electric extras"}</strong></li>
+        <li>${t("compare.summary.panels", {
+          kwp: fmt.kwp(m.kwp),
+          area: integer(m.kwp / KWP_PER_USABLE_M2),
+        })}</li>
+        <li>${m.batteryKwh > 0
+          ? t("compare.summary.battery", { kwh: fmt.num(m.batteryKwh) })
+          : t("compare.summary.noBattery")}</li>
+        <li>${extras.length
+          ? t("compare.summary.extras", { extras: I18n.list(extras) })
+          : t("compare.summary.noExtras")}</li>
       </ul>`;
   }
 
@@ -381,17 +465,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    const names = [...missing].map((k) => UNCOSTED[k]);
-    const list =
-      names.length === 1
-        ? names[0]
-        : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+    const names = [...missing].map((k) => t(`uncosted.${k}`));
     $("costNotice").hidden = false;
-    $("costNotice").innerHTML = `
-      <strong>What you pay for the ${list} is not included.</strong>
-      Only the panels and the battery are costed here. The extras change the electricity bill,
-      and that is in every figure on this page — but the price of buying and installing them
-      is not, so the value figures are not a full purchase decision for them.`;
+    $("costNotice").innerHTML = t("compare.notice.uncosted", { items: I18n.list(names) });
   }
 
   function renderDelta() {
@@ -404,51 +480,51 @@ document.addEventListener("DOMContentLoaded", async () => {
       Math.abs(a.totalConsumption - b.totalConsumption) < 1;
 
     const rows = [
-      ["Value over the system's life", fmt.money(a.totalNpv), fmt.money(b.totalNpv),
+      ["value", fmt.money(a.totalNpv), fmt.money(b.totalNpv),
        fmt.signedMoney(b.totalNpv - a.totalNpv)],
-      ["Upfront cost", fmt.money(a.totalCapex), fmt.money(b.totalCapex),
+      ["upfront", fmt.money(a.totalCapex), fmt.money(b.totalCapex),
        fmt.signedMoney(b.totalCapex - a.totalCapex)],
-      ["Yearly bill", fmt.money(billOf(a)), fmt.money(billOf(b)),
+      ["bill", fmt.money(billOf(a)), fmt.money(billOf(b)),
        fmt.signedMoney(billOf(b) - billOf(a))],
-      ["Yearly saving",
+      ["saving",
        fmt.money(a.billNow - billOf(a)), fmt.money(b.billNow - billOf(b)),
        fmt.signedMoney((b.billNow - billOf(b)) - (a.billNow - billOf(a)))],
-      ["Solar produced", fmt.kwh(a.chosen.totalProduction), fmt.kwh(b.chosen.totalProduction),
+      ["produced", fmt.kwh(a.chosen.totalProduction), fmt.kwh(b.chosen.totalProduction),
        fmt.signedKwh(b.chosen.totalProduction - a.chosen.totalProduction)],
-      ["Self-sufficiency", fmt.pct(a.chosen.selfSufficiencyRate), fmt.pct(b.chosen.selfSufficiencyRate),
+      ["selfSufficiency", fmt.pct(a.chosen.selfSufficiencyRate), fmt.pct(b.chosen.selfSufficiencyRate),
        fmt.pts(b.chosen.selfSufficiencyRate - a.chosen.selfSufficiencyRate)],
-      ["Of your solar, used on site",
+      ["selfConsumption",
        fmt.pct(a.chosen.selfConsumptionRate), fmt.pct(b.chosen.selfConsumptionRate),
        fmt.pts(b.chosen.selfConsumptionRate - a.chosen.selfConsumptionRate)],
-      ["Bought from the grid", fmt.kwh(a.chosen.imported), fmt.kwh(b.chosen.imported),
+      ["imported", fmt.kwh(a.chosen.imported), fmt.kwh(b.chosen.imported),
        fmt.signedKwh(b.chosen.imported - a.chosen.imported)],
-      ["Electricity used per year", fmt.kwh(a.totalConsumption), fmt.kwh(b.totalConsumption),
+      ["consumption", fmt.kwh(a.totalConsumption), fmt.kwh(b.totalConsumption),
        fmt.signedKwh(b.totalConsumption - a.totalConsumption)],
     ];
 
+    // Three whole verdicts rather than a stem with an optional clause bolted on: the "close
+    // enough" case is its own sentence in every language.
+    const verdict = identical
+      ? t("compare.delta.identical")
+      : t(gap < 500 ? "compare.delta.betterClose" : "compare.delta.better", {
+          system: systemName(better),
+          gap: fmt.money(gap),
+        });
+
     $("deltaBody").innerHTML = `
-      <p class="verdict-line">
-        ${
-          identical
-            ? "Both columns are the same system — change the panels, the battery or the extras on one side to see what it does."
-            : `<strong>${LABELS[better]}</strong> is worth <strong>${fmt.money(gap)}</strong> more over the system's life.` +
-              (gap < 500
-                ? " That is close enough that the choice can rest on what you want rather than on the money."
-                : "")
-        }
-      </p>
+      <p class="verdict-line">${verdict}</p>
       <div class="delta-table" role="table">
         <div class="delta-row head" role="row">
           <span role="columnheader"></span>
-          <span role="columnheader">${LABELS.a}</span>
-          <span role="columnheader">${LABELS.b}</span>
-          <span role="columnheader">B &minus; A</span>
+          <span role="columnheader">${systemName("a")}</span>
+          <span role="columnheader">${systemName("b")}</span>
+          <span role="columnheader">${t("compare.delta.diff")}</span>
         </div>
         ${rows
           .map(
-            ([label, av, bv, dv]) => `
+            ([key, av, bv, dv]) => `
           <div class="delta-row" role="row">
-            <span role="cell">${label}</span>
+            <span role="cell">${t(`compare.delta.row.${key}`)}</span>
             <span role="cell">${av}</span>
             <span role="cell">${bv}</span>
             <span role="cell" class="delta-cell">${dv}</span>
@@ -456,51 +532,37 @@ document.addEventListener("DOMContentLoaded", async () => {
           )
           .join("")}
       </div>
-      <p class="hint">
-        Both columns use the same house, the same weather and the same tariffs, so every
-        difference above comes from the kit alone.
-      </p>`;
+      <p class="hint">${t("compare.delta.footnote")}</p>`;
 
     $("verdictBlock").hidden = false;
   }
 
   function renderHouse() {
+    const aspectKey = ASPECT_KEYS[String(house.orientation)];
+    const aspect = aspectKey ? t(`roof.aspect.${aspectKey}`) : `${house.orientation}°`;
+    const tiltKey = TILT_KEYS[String(house.tilt)];
+    const tilt = tiltKey ? t(tiltKey) : `${house.tilt}°`;
     $("houseSummary").innerHTML = `
-      <dt>Town</dt><dd>${house.city.name}, ${house.countryName}</dd>
-      <dt>Roof</dt><dd>${ORIENTATION_LABELS[String(house.orientation)] || `${house.orientation}°`},
-        ${TILT_LABELS[String(house.tilt)] || `${house.tilt}°`}</dd>
-      <dt>Electricity used, before extras</dt><dd>${fmt.kwh(house.consumption)} a year</dd>`;
+      <dt>${t("compare.house.town")}</dt><dd>${house.city.name}, ${countryName()}</dd>
+      <dt>${t("compare.house.roof")}</dt><dd>${t("compare.house.roofValue", { aspect, tilt })}</dd>
+      <dt>${t("compare.house.consumption")}</dt>
+      <dd>${t("compare.house.consumptionValue", { kwh: fmt.kwh(house.consumption) })}</dd>`;
   }
 
   function renderAssumptions() {
     const m = state.a.model;
     $("assumptions-body").innerHTML = `
       <ul>
-        <li><strong>Screening estimate, not a quote.</strong> Treat these as a first indication,
-        not an engineering study or a financial promise.</li>
-        <li><strong>Only the panels and the battery are costed.</strong> Buying and installing a
-        heat pump, an electric car or an air conditioner is not in any figure here — their
-        effect on your electricity bill is, but their price is not.</li>
-        <li><strong>Sunlight and temperature</strong> are PVGIS measurements for
-        ${m.site.name} (${m.country}) itself, and are identical for both columns.</li>
-        <li><strong>Only the kit differs.</strong> Both columns share the house, the roof, the
-        base electricity use and every tariff — that is what makes the comparison meaningful.
-        To compare two towns or two tariffs, run the step-by-step version twice.</li>
-        <li><strong>The extras are added on top</strong> of the same base consumption, so a
-        column with a heat pump legitimately uses more electricity than one without. Compare
-        the yearly bill and the value over the system's life, not the self-sufficiency alone —
-        adding a heat pump lowers self-sufficiency even when it saves money overall.</li>
-        <li><strong>Battery control</strong> is a simple rule: store surplus, use it when short.
-        No price trading, no forecasting.</li>
-        <li><strong>Weather variability</strong> between days is smoothed out, which flatters
-        the battery slightly in both columns.</li>
-        <li><strong>Money:</strong> ${m.lifetimeYears}-year life, ${m.discountRatePct}% discount
-        rate, panels losing 0.5% output per year, maintenance at 1% of system cost per year.
-        All amounts are in the currency you selected; no exchange rates are applied.</li>
+        <li>${t("compare.assump.screening")}</li>
+        <li>${t("compare.assump.uncosted")}</li>
+        <li>${t("compare.assump.data", { city: m.site.name, country: countryName() })}</li>
+        <li>${t("compare.assump.kitOnly")}</li>
+        <li>${t("compare.assump.extras")}</li>
+        <li>${t("compare.assump.dispatch")}</li>
+        <li>${t("compare.assump.weather")}</li>
+        <li>${t("compare.assump.money", { years: m.lifetimeYears, rate: m.discountRatePct })}</li>
       </ul>
-      <p class="hint">This panel lists the caveats that apply to <em>your</em> scenario. The
-      whole method — data sources, formulas and every limitation — is written out in
-      <a href="methodology.html">how this works</a>.</p>`;
+      <p class="hint">${t("assump.methodLink")}</p>`;
   }
 
   // ---- recompute ------------------------------------------------------------
@@ -520,7 +582,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const problems = validate();
       if (problems.length) {
         const err = $("formError");
-        err.textContent = `Please check: ${problems.slice(0, 4).join(", ")}.`;
+        err.textContent = t("error.checkFields", { fields: I18n.list(problems.slice(0, 4)) });
         err.hidden = false;
         return;
       }
@@ -553,6 +615,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   Charts.onThemeChange(refresh);
+
+  // The column labels and input captions are generated markup, not translated DOM, so they are
+  // rebuilt here. The model is language-independent and survives.
+  I18n.onChange(() => {
+    buildColumns(readColumnInputs());
+    refresh();
+  });
 
   refresh();
 });

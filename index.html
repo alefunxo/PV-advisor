@@ -3,7 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Solar Advisor — is PV worth it for your home?</title>
+  <!-- The English text stays inline as the static fallback: the page reads correctly before
+       js/i18n.js has fetched anything, and with no JavaScript at all. The catalogue in
+       js/i18n/en.json holds the same strings, and the smoke suite asserts the two agree so
+       they cannot quietly drift. -->
+  <title data-i18n="index.title">Solar Advisor — is PV worth it for your home?</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -12,92 +16,106 @@
       <!-- The method belongs in the header, not the footer: being legible about how the
            numbers are made is the main thing this tool has over an installer's spreadsheet. -->
       <nav class="site-nav">
-        <a href="methodology.html">How this works</a>
+        <a href="methodology.html" data-i18n="nav.method">How this works</a>
+        <select id="langSelect" class="lang-picker" aria-label="Language"
+                data-i18n-attr="aria-label:nav.language"></select>
       </nav>
-      <h1>Is solar worth it for your home?</h1>
-      <p class="subtitle">
+      <h1 data-i18n="index.h1">Is solar worth it for your home?</h1>
+      <p class="subtitle" data-i18n="index.subtitle">
         A quick screening estimate for anywhere in Europe. Three short steps, no sign-up.
       </p>
     </header>
 
     <ol class="steps" id="stepper">
-      <li data-step="1"><span class="dot">1</span> Your home</li>
-      <li data-step="2"><span class="dot">2</span> Costs &amp; tariffs</li>
-      <li data-step="3"><span class="dot">3</span> Extras</li>
-      <li data-step="4"><span class="dot">4</span> Results</li>
+      <li data-step="1"><span class="dot">1</span> <span data-i18n="steps.home">Your home</span></li>
+      <li data-step="2"><span class="dot">2</span> <span data-i18n="steps.costs">Costs &amp; tariffs</span></li>
+      <li data-step="3"><span class="dot">3</span> <span data-i18n="steps.extras">Extras</span></li>
+      <li data-step="4"><span class="dot">4</span> <span data-i18n="steps.results">Results</span></li>
     </ol>
+
+    <!-- Shown when the sunlight/climate data cannot be fetched. Every other failure in this
+         tool is explained to the reader; a page that silently stops with an empty country
+         list is the one that is not. -->
+    <section class="shared-panel" id="dataErrorPanel" role="alert" hidden>
+      <h2 data-i18n="dataError.h2">Something did not load</h2>
+      <p class="lead" data-i18n="dataError.lead">
+        The sunlight and climate data this tool runs on did not arrive, so it cannot work out
+        anything yet. That is usually a passing network problem rather than anything you did.
+      </p>
+      <p><button type="button" class="button-link" id="dataErrorRetry" data-i18n="dataError.retry">Reload the page</button></p>
+    </section>
 
     <form id="wizard" novalidate>
       <!-- ---------------------------------------------------------------- Step 1 -->
       <section class="step" data-step="1">
-        <h2>Your home</h2>
+        <h2 tabindex="-1" data-i18n="step1.h2">Your home</h2>
 
         <div class="field">
-          <label for="country">Country</label>
+          <label for="country" data-i18n="step1.country">Country</label>
           <select id="country" required></select>
         </div>
 
         <div class="field">
-          <label for="city">Nearest town or city</label>
+          <label for="city" data-i18n="step1.city">Nearest town or city</label>
           <select id="city" required></select>
-          <p class="hint">
+          <p class="hint" data-i18n="step1.city.hint">
             Used to pick the closest point in our European sunlight map.
           </p>
         </div>
 
         <div class="row">
           <div class="field">
-            <label for="orientation">Which way does the roof face?</label>
+            <label for="orientation" data-i18n="step1.orientation">Which way does the roof face?</label>
             <select id="orientation">
-              <option value="0" selected>South — best</option>
-              <option value="-45">South-east</option>
-              <option value="45">South-west</option>
-              <option value="-90">East</option>
-              <option value="90">West</option>
+              <option value="0" selected data-i18n="orient.s">South — best</option>
+              <option value="-45" data-i18n="orient.se">South-east</option>
+              <option value="45" data-i18n="orient.sw">South-west</option>
+              <option value="-90" data-i18n="orient.e">East</option>
+              <option value="90" data-i18n="orient.w">West</option>
             </select>
           </div>
           <div class="field">
-            <label for="tilt">Roof steepness</label>
+            <label for="tilt" data-i18n="step1.tilt">Roof steepness</label>
             <select id="tilt">
-              <option value="0">Flat roof</option>
-              <option value="15">Shallow (15°)</option>
-              <option value="30" selected>Typical pitch (30°)</option>
-              <option value="45">Steep (45°)</option>
+              <option value="0" data-i18n="tilt.flat">Flat roof</option>
+              <option value="15" data-i18n="tilt.shallow">Shallow (15°)</option>
+              <option value="30" selected data-i18n="tilt.typical">Typical pitch (30°)</option>
+              <option value="45" data-i18n="tilt.steep">Steep (45°)</option>
             </select>
           </div>
         </div>
 
         <fieldset class="sizing">
-          <legend>How big a system?</legend>
+          <legend data-i18n="step1.sizing.legend">How big a system?</legend>
           <div class="choice">
             <label class="radio">
               <input type="radio" name="sizeMode" value="area" checked />
-              I know my roof area
+              <span data-i18n="step1.sizing.byArea">I know my roof area</span>
             </label>
             <label class="radio">
               <input type="radio" name="sizeMode" value="kwp" />
-              I know the system size (kWp)
+              <span data-i18n="step1.sizing.byKwp">I know the system size (kWp)</span>
             </label>
           </div>
 
           <div class="field" data-size-mode="area">
-            <label for="roofArea">Usable roof area (m²)</label>
-            <input type="number" id="roofArea" min="1" step="1" value="30" />
-            <p class="hint">Roughly the sunny part of the roof, ignoring chimneys and shading.</p>
+            <label for="roofArea" data-i18n="step1.roofArea">Usable roof area (m²)</label>
+            <input type="number" id="roofArea" min="1" max="2000" step="1" value="30" />
+            <p class="hint" data-i18n="step1.roofArea.hint">Roughly the sunny part of the roof, ignoring chimneys and shading.</p>
           </div>
 
           <div class="field hidden" data-size-mode="kwp">
-            <label for="kwp">System size (kWp)</label>
-            <input type="number" id="kwp" min="0.5" step="0.1" value="6" />
+            <label for="kwp" data-i18n="step1.kwp">System size (kWp)</label>
+            <input type="number" id="kwp" min="0.5" max="100" step="0.1" value="6" />
           </div>
 
           <p class="derived" id="sizeDerived"></p>
         </fieldset>
 
         <div class="field">
-          <label for="consumption">Electricity used per year (kWh)</label>
-          <input type="number" id="consumption" min="100" step="50" value="4500" required />
-          <p class="hint">
+          <label for="consumption" data-i18n="step1.consumption">Electricity used per year (kWh)</label>
+          <input type="number" id="consumption" min="100" max="30000" step="50" value="4500" required />
+          <p class="hint" data-i18n="step1.consumption.hint">
             It is on your annual bill. A typical European home uses 3 000–5 000 kWh.
           </p>
         </div>
@@ -105,88 +123,88 @@
 
       <!-- ---------------------------------------------------------------- Step 2 -->
       <section class="step hidden" data-step="2">
-        <h2>Costs &amp; tariffs</h2>
-        <p class="lead">
+        <h2 tabindex="-1" data-i18n="step2.h2">Costs &amp; tariffs</h2>
+        <p class="lead" data-i18n="step2.lead">
           Defaults are typical values. Change any you know — your own bill is always better than
           our guess.
         </p>
 
         <div class="field">
-          <label for="currency">Currency</label>
+          <label for="currency" data-i18n="step2.currency">Currency</label>
           <select id="currency">
-            <option value="EUR">Euro (€)</option>
-            <option value="CHF">Swiss franc (CHF)</option>
-            <option value="GBP">Pound sterling (£)</option>
-            <option value="SEK">Swedish krona (SEK)</option>
-            <option value="NOK">Norwegian krone (NOK)</option>
-            <option value="DKK">Danish krone (DKK)</option>
-            <option value="PLN">Polish złoty (PLN)</option>
-            <option value="CZK">Czech koruna (CZK)</option>
-            <option value="HUF">Hungarian forint (HUF)</option>
-            <option value="RON">Romanian leu (RON)</option>
-            <option value="BGN">Bulgarian lev (BGN)</option>
+            <option value="EUR" data-i18n="currency.EUR">Euro (€)</option>
+            <option value="CHF" data-i18n="currency.CHF">Swiss franc (CHF)</option>
+            <option value="GBP" data-i18n="currency.GBP">Pound sterling (£)</option>
+            <option value="SEK" data-i18n="currency.SEK">Swedish krona (SEK)</option>
+            <option value="NOK" data-i18n="currency.NOK">Norwegian krone (NOK)</option>
+            <option value="DKK" data-i18n="currency.DKK">Danish krone (DKK)</option>
+            <option value="PLN" data-i18n="currency.PLN">Polish złoty (PLN)</option>
+            <option value="CZK" data-i18n="currency.CZK">Czech koruna (CZK)</option>
+            <option value="HUF" data-i18n="currency.HUF">Hungarian forint (HUF)</option>
+            <option value="RON" data-i18n="currency.RON">Romanian leu (RON)</option>
+            <option value="BGN" data-i18n="currency.BGN">Bulgarian lev (BGN)</option>
           </select>
         </div>
 
         <div class="row">
           <div class="field">
-            <label for="retailPrice">What you pay for electricity (per kWh)</label>
-            <input type="number" id="retailPrice" step="0.01" min="0" value="0.28" required />
+            <label for="retailPrice" data-i18n="step2.retailPrice">What you pay for electricity (per kWh)</label>
+            <input type="number" id="retailPrice" step="0.01" min="0" max="5" value="0.28" required />
           </div>
           <div class="field">
-            <label for="feedInTariff">What you are paid for exports (per kWh)</label>
-            <input type="number" id="feedInTariff" step="0.01" min="0" value="0.08" required />
-            <p class="hint">The gap between these two drives the whole battery question.</p>
+            <label for="feedInTariff" data-i18n="step2.feedInTariff">What you are paid for exports (per kWh)</label>
+            <input type="number" id="feedInTariff" step="0.01" min="0" max="5" value="0.08" required />
+            <p class="hint" data-i18n="step2.feedInTariff.hint">The gap between these two drives the whole battery question.</p>
           </div>
         </div>
 
         <div class="row">
           <div class="field">
-            <label for="capexPerKwp">Solar system cost (per kWp, installed)</label>
-            <input type="number" id="capexPerKwp" step="10" min="0" value="1400" required />
+            <label for="capexPerKwp" data-i18n="step2.capexPerKwp">Solar system cost (per kWp, installed)</label>
+            <input type="number" id="capexPerKwp" step="10" min="0" max="10000" value="1400" required />
           </div>
           <div class="field">
-            <label for="batteryCapexPerKwh">Battery cost (per kWh)</label>
-            <input type="number" id="batteryCapexPerKwh" step="10" min="0" value="900" required />
+            <label for="batteryCapexPerKwh" data-i18n="step2.batteryCapexPerKwh">Battery cost (per kWh)</label>
+            <input type="number" id="batteryCapexPerKwh" step="10" min="0" max="5000" value="900" required />
           </div>
         </div>
 
         <div class="field">
-          <label for="batteryKwh">Battery size to test (kWh)</label>
-          <input type="number" id="batteryKwh" step="0.5" min="0" value="8" required />
-          <p class="hint">Set to 0 to skip the battery. We always show you both cases.</p>
+          <label for="batteryKwh" data-i18n="step2.batteryKwh">Battery size to test (kWh)</label>
+          <input type="number" id="batteryKwh" step="0.5" min="0" max="100" value="8" required />
+          <p class="hint" data-i18n="step2.batteryKwh.hint">Set to 0 to skip the battery. We always show you both cases.</p>
         </div>
 
         <details class="advanced">
-          <summary>Financial assumptions</summary>
+          <summary data-i18n="step2.advanced">Financial assumptions</summary>
           <div class="row">
             <div class="field">
-              <label for="discountRate">Discount rate (%)</label>
-              <input type="number" id="discountRate" step="0.1" min="0" value="3" />
+              <label for="discountRate" data-i18n="step2.discountRate">Discount rate (%)</label>
+              <input type="number" id="discountRate" step="0.1" min="0" max="20" value="3" />
             </div>
             <div class="field">
-              <label for="lifetime">System lifetime (years)</label>
-              <input type="number" id="lifetime" step="1" min="1" value="25" />
+              <label for="lifetime" data-i18n="step2.lifetime">System lifetime (years)</label>
+              <input type="number" id="lifetime" step="1" min="1" max="40" value="25" />
             </div>
           </div>
           <div class="row">
             <div class="field">
-              <label for="batteryLifetime">Battery lifetime (years)</label>
-              <input type="number" id="batteryLifetime" step="1" min="1" value="15" />
+              <label for="batteryLifetime" data-i18n="step2.batteryLifetime">Battery lifetime (years)</label>
+              <input type="number" id="batteryLifetime" step="1" min="1" max="40" value="15" />
             </div>
             <div class="field">
-              <label for="roundTrip">Battery round-trip efficiency</label>
+              <label for="roundTrip" data-i18n="step2.roundTrip">Battery round-trip efficiency</label>
               <input type="number" id="roundTrip" step="0.01" min="0.5" max="1" value="0.9" />
             </div>
           </div>
           <div class="row">
             <div class="field">
-              <label for="performanceRatio">Performance ratio</label>
+              <label for="performanceRatio" data-i18n="step2.performanceRatio">Performance ratio</label>
               <input type="number" id="performanceRatio" step="0.01" min="0.5" max="1" value="0.86" />
             </div>
             <div class="field">
-              <label for="tariffEscalation">Yearly electricity price rise (%)</label>
-              <input type="number" id="tariffEscalation" step="0.5" min="0" value="0" />
+              <label for="tariffEscalation" data-i18n="step2.tariffEscalation">Yearly electricity price rise (%)</label>
+              <input type="number" id="tariffEscalation" step="0.5" min="0" max="20" value="0" />
             </div>
           </div>
         </details>
@@ -194,8 +212,8 @@
 
       <!-- ---------------------------------------------------------------- Step 3 -->
       <section class="step hidden" data-step="3">
-        <h2>Extras</h2>
-        <p class="lead">
+        <h2 tabindex="-1" data-i18n="step3.h2">Extras</h2>
+        <p class="lead" data-i18n="step3.lead">
           Planning a heat pump, an electric car or air conditioning? Each one changes how much of
           your own solar you can use. Turn on any that apply — or none, and go straight to your
           results.
@@ -204,44 +222,46 @@
         <div class="asset">
           <label class="toggle">
             <input type="checkbox" id="hpEnabled" />
-            <span><strong>Heat pump</strong> — heating your home with electricity</span>
+            <span data-i18n-html="asset.hp.title"><strong>Heat pump</strong> — heating your home with electricity</span>
           </label>
-          <p class="hint">
+          <p class="hint" data-i18n="asset.hp.hint">
             Uses the most electricity in winter, when there is least sun. Usually the toughest
             case for solar.
           </p>
           <details class="advanced" data-asset="hp">
-            <summary>Heat pump details</summary>
+            <summary data-i18n="asset.hp.details">Heat pump details</summary>
             <div class="choice">
               <label class="radio">
-                <input type="radio" name="hpMode" value="area" checked /> Estimate from my home
+                <input type="radio" name="hpMode" value="area" checked />
+                <span data-i18n="hp.mode.area">Estimate from my home</span>
               </label>
               <label class="radio">
-                <input type="radio" name="hpMode" value="kwh" /> I know my heat demand
+                <input type="radio" name="hpMode" value="kwh" />
+                <span data-i18n="hp.mode.kwh">I know my heat demand</span>
               </label>
             </div>
             <div data-hp-mode="area">
               <div class="row">
                 <div class="field">
-                  <label for="hpArea">Heated floor area (m²)</label>
-                  <input type="number" id="hpArea" min="10" step="5" value="140" />
+                  <label for="hpArea" data-i18n="hp.area">Heated floor area (m²)</label>
+                  <input type="number" id="hpArea" min="10" max="1000" step="5" value="140" />
                 </div>
                 <div class="field">
-                  <label for="hpStandard">Building age / insulation</label>
+                  <label for="hpStandard" data-i18n="hp.standard">Building age / insulation</label>
                   <select id="hpStandard"></select>
                 </div>
               </div>
             </div>
             <div class="field hidden" data-hp-mode="kwh">
-              <label for="hpHeatKwh">Yearly heat demand (kWh)</label>
-              <input type="number" id="hpHeatKwh" min="0" step="100" value="12000" />
+              <label for="hpHeatKwh" data-i18n="hp.heatKwh">Yearly heat demand (kWh)</label>
+              <input type="number" id="hpHeatKwh" min="0" max="60000" step="100" value="12000" />
             </div>
             <div class="field">
-              <label for="hpSupply">Heat distribution</label>
+              <label for="hpSupply" data-i18n="hp.supply">Heat distribution</label>
               <select id="hpSupply">
-                <option value="35">Underfloor heating (efficient)</option>
-                <option value="45" selected>Mixed / large radiators</option>
-                <option value="55">Old radiators (less efficient)</option>
+                <option value="35" data-i18n="hpSupply.35">Underfloor heating (efficient)</option>
+                <option value="45" selected data-i18n="hpSupply.45">Mixed / large radiators</option>
+                <option value="55" data-i18n="hpSupply.55">Old radiators (less efficient)</option>
               </select>
             </div>
           </details>
@@ -250,30 +270,30 @@
         <div class="asset">
           <label class="toggle">
             <input type="checkbox" id="evEnabled" />
-            <span><strong>Electric car</strong> — charging at home</span>
+            <span data-i18n-html="asset.ev.title"><strong>Electric car</strong> — charging at home</span>
           </label>
-          <p class="hint">
+          <p class="hint" data-i18n="asset.ev.hint">
             Adds a lot of demand. Whether it helps your solar depends entirely on when you charge.
           </p>
           <details class="advanced" data-asset="ev">
-            <summary>Electric car details</summary>
+            <summary data-i18n="asset.ev.details">Electric car details</summary>
             <div class="row">
               <div class="field">
-                <label for="evKm">Kilometres driven per year</label>
-                <input type="number" id="evKm" min="0" step="500" value="12000" />
+                <label for="evKm" data-i18n="ev.km">Kilometres driven per year</label>
+                <input type="number" id="evKm" min="0" max="60000" step="500" value="12000" />
               </div>
               <div class="field">
-                <label for="evEfficiency">Consumption (kWh per 100 km)</label>
-                <input type="number" id="evEfficiency" min="5" step="0.5" value="18" />
+                <label for="evEfficiency" data-i18n="ev.efficiency">Consumption (kWh per 100 km)</label>
+                <input type="number" id="evEfficiency" min="5" max="60" step="0.5" value="18" />
               </div>
             </div>
             <div class="field">
-              <label for="evStrategy">When do you charge?</label>
+              <label for="evStrategy" data-i18n="ev.strategy">When do you charge?</label>
               <select id="evStrategy">
-                <option value="dumb" selected>Plug in when I get home (evening)</option>
-                <option value="solar">Charge during the day, from my own solar</option>
+                <option value="dumb" selected data-i18n="evStrategy.dumb">Plug in when I get home (evening)</option>
+                <option value="solar" data-i18n="evStrategy.solar">Charge during the day, from my own solar</option>
               </select>
-              <p class="hint">
+              <p class="hint" data-i18n="ev.strategy.hint">
                 Daytime charging only helps if the car is actually parked at home on weekdays.
                 For most commuters it is not.
               </p>
@@ -284,21 +304,21 @@
         <div class="asset">
           <label class="toggle">
             <input type="checkbox" id="acEnabled" />
-            <span><strong>Air conditioning</strong> — cooling in summer</span>
+            <span data-i18n-html="asset.ac.title"><strong>Air conditioning</strong> — cooling in summer</span>
           </label>
-          <p class="hint">
+          <p class="hint" data-i18n="asset.ac.hint">
             Runs on hot, sunny afternoons — the one addition that usually fits solar well.
           </p>
           <details class="advanced" data-asset="ac">
-            <summary>Air conditioning details</summary>
+            <summary data-i18n="asset.ac.details">Air conditioning details</summary>
             <div class="row">
               <div class="field">
-                <label for="acArea">Cooled floor area (m²)</label>
-                <input type="number" id="acArea" min="5" step="5" value="80" />
+                <label for="acArea" data-i18n="ac.area">Cooled floor area (m²)</label>
+                <input type="number" id="acArea" min="5" max="1000" step="5" value="80" />
               </div>
               <div class="field">
-                <label for="acSeer">Efficiency (SEER)</label>
-                <input type="number" id="acSeer" min="1.5" step="0.1" value="3" />
+                <label for="acSeer" data-i18n="ac.seer">Efficiency (SEER)</label>
+                <input type="number" id="acSeer" min="1.5" max="10" step="0.1" value="3" />
               </div>
             </div>
           </details>
@@ -307,29 +327,29 @@
 
       <!-- ---------------------------------------------------------------- Results -->
       <section class="step hidden" data-step="4">
-        <h2>Your results</h2>
+        <h2 tabindex="-1" data-i18n="results.h2">Your results</h2>
         <div id="verdict" class="verdict"></div>
 
         <!-- One control row, above everything it scopes. Flipping an extra recomputes the
              whole page against the *same* solar and battery system, so the change you see is
              the extra's doing and not a resized system's. -->
         <div class="scenario-bar">
-          <p class="scenario-bar-label" id="scenarioBarLabel">Show my results with</p>
+          <p class="scenario-bar-label" id="scenarioBarLabel" data-i18n="results.toggleLabel">Show my results with</p>
           <div class="scenario-toggles" role="group" aria-labelledby="scenarioBarLabel">
             <label class="chip">
               <input type="checkbox" id="resultHp" />
-              <span>Heat pump</span>
+              <span data-i18n="asset.hp.name">Heat pump</span>
             </label>
             <label class="chip">
               <input type="checkbox" id="resultEv" />
-              <span>Electric car</span>
+              <span data-i18n="asset.ev.name">Electric car</span>
             </label>
             <label class="chip">
               <input type="checkbox" id="resultAc" />
-              <span>Air conditioning</span>
+              <span data-i18n="asset.ac.name">Air conditioning</span>
             </label>
           </div>
-          <p class="hint" id="scenarioSummary"></p>
+          <p class="hint" id="scenarioSummary" role="status"></p>
         </div>
 
         <!-- Only the panels and the battery are costed anywhere in this tool. When an extra is
@@ -342,47 +362,47 @@
         <div class="chart-grid">
           <figure class="chart-card wide" id="card-monthly">
             <figcaption>
-              <h3>Where your electricity came from, month by month</h3>
-              <p class="hint">
+              <h3 data-i18n="chart.monthly.title">Where your electricity came from, month by month</h3>
+              <p class="hint" data-i18n="chart.monthly.hint">
                 Each bar is that month's total use. Watch the winter months: the roof gives
                 least exactly when the house wants most.
               </p>
             </figcaption>
-            <div class="chart-frame"><canvas id="chartMonthly"></canvas></div>
+            <div class="chart-frame"><canvas id="chartMonthly" aria-hidden="true"></canvas></div>
           </figure>
 
           <figure class="chart-card" id="card-split">
             <figcaption>
-              <h3>Where your solar output went</h3>
-              <p class="hint">Every kilowatt-hour the panels made, over a year.</p>
+              <h3 data-i18n="chart.split.title">Where your solar output went</h3>
+              <p class="hint" data-i18n="chart.split.hint">Every kilowatt-hour the panels made, over a year.</p>
             </figcaption>
-            <div class="chart-frame"><canvas id="chartSplit"></canvas></div>
+            <div class="chart-frame"><canvas id="chartSplit" aria-hidden="true"></canvas></div>
           </figure>
 
           <figure class="chart-card" id="card-cash">
             <figcaption>
-              <h3>Money over the system's life</h3>
-              <p class="hint">
+              <h3 data-i18n="chart.cash.title">Money over the system's life</h3>
+              <p class="hint" data-i18n="chart.cash.hint">
                 The running total, starting at what you paid. It crosses zero at payback.
               </p>
             </figcaption>
-            <div class="chart-frame"><canvas id="chartCash"></canvas></div>
+            <div class="chart-frame"><canvas id="chartCash" aria-hidden="true"></canvas></div>
           </figure>
 
           <figure class="chart-card" id="card-summer">
             <figcaption>
-              <h3 id="summerTitle">A typical July day</h3>
-              <p class="hint">Averaged across the month — a real day is spikier.</p>
+              <h3 id="summerTitle" data-i18n="chart.day.summer">A typical July day</h3>
+              <p class="hint" data-i18n="chart.day.summer.hint">Averaged across the month — a real day is spikier.</p>
             </figcaption>
-            <div class="chart-frame"><canvas id="chartSummer"></canvas></div>
+            <div class="chart-frame"><canvas id="chartSummer" aria-hidden="true"></canvas></div>
           </figure>
 
           <figure class="chart-card" id="card-winter">
             <figcaption>
-              <h3 id="winterTitle">A typical January day</h3>
-              <p class="hint">The same house, the same roof, five months later.</p>
+              <h3 id="winterTitle" data-i18n="chart.day.winter">A typical January day</h3>
+              <p class="hint" data-i18n="chart.day.winter.hint">The same house, the same roof, five months later.</p>
             </figcaption>
-            <div class="chart-frame"><canvas id="chartWinter"></canvas></div>
+            <div class="chart-frame"><canvas id="chartWinter" aria-hidden="true"></canvas></div>
           </figure>
         </div>
 
@@ -392,34 +412,41 @@
              user has already described rather than from a blank form. -->
         <div class="cta">
           <div>
-            <h3>Not sure this is the right system?</h3>
-            <p class="hint">
+            <h3 data-i18n="cta.h3">Not sure this is the right system?</h3>
+            <p class="hint" data-i18n="cta.hint">
               Put two versions of it next to each other — with and without a battery, more or
               fewer panels, a heat pump or not. Your house and your tariffs carry over.
             </p>
           </div>
-          <button type="button" id="compareBtn">Compare two systems &rarr;</button>
+          <button type="button" id="compareBtn" data-i18n="cta.button">Compare two systems →</button>
         </div>
 
         <details class="advanced assumptions-panel" id="assumptions" open>
-          <summary>What this estimate assumes</summary>
+          <summary data-i18n="assumptions.summary">What this estimate assumes</summary>
           <div id="assumptions-body"></div>
         </details>
       </section>
 
       <nav class="wizard-nav">
-        <button type="button" id="backBtn" class="secondary" hidden>Back</button>
+        <button type="button" id="backBtn" class="secondary" hidden data-i18n="nav.back">Back</button>
         <button type="button" id="nextBtn">Continue</button>
-        <button type="button" id="restartBtn" class="secondary" hidden>Start again</button>
+        <button type="button" id="restartBtn" class="secondary" hidden data-i18n="nav.restart">Start again</button>
       </nav>
-      <p class="error" id="formError" hidden></p>
+      <p class="error" id="formError" role="alert" hidden></p>
     </form>
 
     <footer class="page-footer">
-      <p>
+      <p data-i18n-html="footer.credit">
         Sunlight data from <a href="https://re.jrc.ec.europa.eu/pvg_tools/en/">PVGIS</a> (European
         Commission JRC). Place names from <a href="https://www.geonames.org/">GeoNames</a>
         (CC&nbsp;BY&nbsp;4.0). This is a screening tool, not a quote or an engineering study.
+      </p>
+      <p data-i18n-html="footer.provenance">
+        Vibe-coded by Alejandro Pena-Bello — the whole source is on
+        <a href="https://github.com/alefunxo/PV-advisor">GitHub</a>. A more advanced,
+        solver-based version of this tool lives at
+        <a href="https://gitlab.hevs.ch/ted/screen_project">gitlab.hevs.ch/ted/screen_project</a>
+        and will be open sourced shortly.
       </p>
     </footer>
   </main>
@@ -427,6 +454,7 @@
   <!-- Vendored rather than loaded from a CDN: the deployed page stays self-contained, works
        offline, and the headless smoke tests need no network. Chart.js v4.4.7, MIT. -->
   <script src="js/vendor/chart.umd.js"></script>
+  <script src="js/i18n.js"></script>
   <script src="js/data/load-profiles.js"></script>
   <script src="js/calc/pv.js"></script>
   <script src="js/calc/climate.js"></script>

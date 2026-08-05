@@ -52,7 +52,6 @@ const Scenario = (() => {
 
     return {
       site: p.site,
-      country: p.country,
       kwp: p.kwp,
       consumption: p.annualConsumptionKwh,
       production,

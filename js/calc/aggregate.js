@@ -8,10 +8,14 @@
 const Aggregate = (() => {
   const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
-  const MONTH_LABELS = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-  ];
+  // Month names are the one bit of language this module used to hold. Intl knows them in every
+  // locale the tool speaks, so they are derived rather than translated — a catalogue entry for
+  // "Feb" would be four more chances to get a month abbreviation wrong.
+  function monthLabels(locale = "en-GB") {
+    const format = new Intl.DateTimeFormat(locale, { month: "short" });
+    // 2021 was not a leap year; any non-leap year gives the twelve months at day 1.
+    return Array.from({ length: 12 }, (_, m) => format.format(new Date(Date.UTC(2021, m, 1))));
+  }
 
   // Month index (0-11) for each of the 8760 hours. Precomputed once: rebuilding it on every
   // toggle re-render would be the most expensive thing on the results page.
@@ -28,9 +32,11 @@ const Aggregate = (() => {
 
   // The two day-profile charts. July and January are the extremes of both the solar and the
   // heating year everywhere in the covered latitude range, so they bracket the answer.
+  // The heading is a catalogue key rather than a sentence: this module stays language-free,
+  // and the UI layer turns the key into words.
   const DAY_PROFILES = [
-    { month: 6, label: "A typical July day", days: DAYS_IN_MONTH[6] },
-    { month: 0, label: "A typical January day", days: DAYS_IN_MONTH[0] },
+    { month: 6, labelKey: "chart.day.summer", days: DAYS_IN_MONTH[6] },
+    { month: 0, labelKey: "chart.day.winter", days: DAYS_IN_MONTH[0] },
   ];
 
   // Group index laying both day profiles out end to end: profile 0 occupies buckets 0-23,
@@ -58,7 +64,7 @@ const Aggregate = (() => {
   }
 
   return {
-    MONTH_LABELS,
+    monthLabels,
     MONTH_OF_HOUR,
     DAY_PROFILES,
     DAY_PROFILE_OF_HOUR,

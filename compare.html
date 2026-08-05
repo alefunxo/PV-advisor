@@ -3,33 +3,46 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Compare two systems — Solar Advisor</title>
+  <title data-i18n="compare.title">Compare two systems — Solar Advisor</title>
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body class="compare-mode">
   <main>
     <header class="page-header">
       <nav class="site-nav">
-        <a href="methodology.html">How this works</a>
+        <a href="methodology.html" data-i18n="nav.method">How this works</a>
+        <select id="langSelect" class="lang-picker" aria-label="Language"
+                data-i18n-attr="aria-label:nav.language"></select>
       </nav>
-      <h1>Compare two systems</h1>
-      <p class="subtitle">
+      <h1 data-i18n="compare.h1">Compare two systems</h1>
+      <p class="subtitle" data-i18n="compare.subtitle">
         One house, two kits. Set the house up once, then put any two combinations of panels,
         battery and electric extras side by side.
       </p>
-      <p class="mode-switch"><a href="index.html">&larr; Back to the step-by-step version</a></p>
+      <p class="mode-switch"><a href="index.html" data-i18n="compare.backLink">← Back to the step-by-step version</a></p>
     </header>
 
     <!-- Shown when the page is opened directly rather than from the last step of the wizard.
          A locked house needs a house to lock, so there is nothing sensible to show without
          one. -->
     <section class="shared-panel" id="noStatePanel" hidden>
-      <h2>Start with your house</h2>
-      <p class="lead">
+      <h2 data-i18n="compare.noState.h2">Start with your house</h2>
+      <p class="lead" data-i18n="compare.noState.lead">
         This page compares two systems for one particular house, so it needs to know the house
         first — where it is, which way the roof faces, and how much electricity it uses.
       </p>
-      <p><a class="button-link" href="index.html">Answer three quick questions &rarr;</a></p>
+      <p><a class="button-link" href="index.html" data-i18n="compare.noState.cta">Answer three quick questions →</a></p>
+    </section>
+
+    <!-- Distinct from the panel above: there *is* a house, the data behind it did not arrive.
+         Same wording as the wizard, because it is the same failure. -->
+    <section class="shared-panel" id="dataErrorPanel" role="alert" hidden>
+      <h2 data-i18n="dataError.h2">Something did not load</h2>
+      <p class="lead" data-i18n="dataError.lead">
+        The sunlight and climate data this tool runs on did not arrive, so it cannot work out
+        anything yet. That is usually a passing network problem rather than anything you did.
+      </p>
+      <p><button type="button" class="button-link" id="dataErrorRetry" data-i18n="dataError.retry">Reload the page</button></p>
     </section>
 
     <!-- The house is fixed here, not merely shared. It was settled in the wizard, and letting
@@ -39,83 +52,83 @@
     <section class="shared-panel" id="housePanel" hidden>
       <div class="house-head">
         <div>
-          <h2>Your house</h2>
-          <p class="lead">
+          <h2 data-i18n="compare.house.h2">Your house</h2>
+          <p class="lead" data-i18n="compare.house.lead">
             Carried over from your answers, and fixed for both columns — only the kit below
             changes.
           </p>
         </div>
-        <a class="secondary-link" href="index.html">Change my house</a>
+        <a class="secondary-link" href="index.html" data-i18n="compare.house.change">Change my house</a>
       </div>
 
       <dl class="house-summary" id="houseSummary"></dl>
 
       <details class="advanced">
-        <summary>Costs &amp; tariffs</summary>
+        <summary data-i18n="compare.costs.summary">Costs &amp; tariffs</summary>
         <div class="field">
-          <label for="currency">Currency</label>
+          <label for="currency" data-i18n="step2.currency">Currency</label>
           <select id="currency">
-            <option value="EUR">Euro (€)</option>
-            <option value="CHF">Swiss franc (CHF)</option>
-            <option value="GBP">Pound sterling (£)</option>
-            <option value="SEK">Swedish krona (SEK)</option>
-            <option value="NOK">Norwegian krone (NOK)</option>
-            <option value="DKK">Danish krone (DKK)</option>
-            <option value="PLN">Polish złoty (PLN)</option>
-            <option value="CZK">Czech koruna (CZK)</option>
-            <option value="HUF">Hungarian forint (HUF)</option>
-            <option value="RON">Romanian leu (RON)</option>
-            <option value="BGN">Bulgarian lev (BGN)</option>
+            <option value="EUR" data-i18n="currency.EUR">Euro (€)</option>
+            <option value="CHF" data-i18n="currency.CHF">Swiss franc (CHF)</option>
+            <option value="GBP" data-i18n="currency.GBP">Pound sterling (£)</option>
+            <option value="SEK" data-i18n="currency.SEK">Swedish krona (SEK)</option>
+            <option value="NOK" data-i18n="currency.NOK">Norwegian krone (NOK)</option>
+            <option value="DKK" data-i18n="currency.DKK">Danish krone (DKK)</option>
+            <option value="PLN" data-i18n="currency.PLN">Polish złoty (PLN)</option>
+            <option value="CZK" data-i18n="currency.CZK">Czech koruna (CZK)</option>
+            <option value="HUF" data-i18n="currency.HUF">Hungarian forint (HUF)</option>
+            <option value="RON" data-i18n="currency.RON">Romanian leu (RON)</option>
+            <option value="BGN" data-i18n="currency.BGN">Bulgarian lev (BGN)</option>
           </select>
         </div>
         <div class="row">
           <div class="field">
-            <label for="retailPrice">What you pay for electricity (per kWh)</label>
-            <input type="number" id="retailPrice" step="0.01" min="0" value="0.28" />
+            <label for="retailPrice" data-i18n="step2.retailPrice">What you pay for electricity (per kWh)</label>
+            <input type="number" id="retailPrice" step="0.01" min="0" max="5" value="0.28" />
           </div>
           <div class="field">
-            <label for="feedInTariff">What you are paid for exports (per kWh)</label>
-            <input type="number" id="feedInTariff" step="0.01" min="0" value="0.08" />
-          </div>
-        </div>
-        <div class="row">
-          <div class="field">
-            <label for="capexPerKwp">Solar system cost (per kWp, installed)</label>
-            <input type="number" id="capexPerKwp" step="10" min="0" value="1400" />
-          </div>
-          <div class="field">
-            <label for="batteryCapexPerKwh">Battery cost (per kWh)</label>
-            <input type="number" id="batteryCapexPerKwh" step="10" min="0" value="900" />
+            <label for="feedInTariff" data-i18n="step2.feedInTariff">What you are paid for exports (per kWh)</label>
+            <input type="number" id="feedInTariff" step="0.01" min="0" max="5" value="0.08" />
           </div>
         </div>
         <div class="row">
           <div class="field">
-            <label for="discountRate">Discount rate (%)</label>
-            <input type="number" id="discountRate" step="0.1" min="0" value="3" />
+            <label for="capexPerKwp" data-i18n="step2.capexPerKwp">Solar system cost (per kWp, installed)</label>
+            <input type="number" id="capexPerKwp" step="10" min="0" max="10000" value="1400" />
           </div>
           <div class="field">
-            <label for="lifetime">System lifetime (years)</label>
-            <input type="number" id="lifetime" step="1" min="1" value="25" />
+            <label for="batteryCapexPerKwh" data-i18n="step2.batteryCapexPerKwh">Battery cost (per kWh)</label>
+            <input type="number" id="batteryCapexPerKwh" step="10" min="0" max="5000" value="900" />
           </div>
         </div>
         <div class="row">
           <div class="field">
-            <label for="batteryLifetime">Battery lifetime (years)</label>
-            <input type="number" id="batteryLifetime" step="1" min="1" value="15" />
+            <label for="discountRate" data-i18n="step2.discountRate">Discount rate (%)</label>
+            <input type="number" id="discountRate" step="0.1" min="0" max="20" value="3" />
           </div>
           <div class="field">
-            <label for="roundTrip">Battery round-trip efficiency</label>
+            <label for="lifetime" data-i18n="step2.lifetime">System lifetime (years)</label>
+            <input type="number" id="lifetime" step="1" min="1" max="40" value="25" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="batteryLifetime" data-i18n="step2.batteryLifetime">Battery lifetime (years)</label>
+            <input type="number" id="batteryLifetime" step="1" min="1" max="40" value="15" />
+          </div>
+          <div class="field">
+            <label for="roundTrip" data-i18n="step2.roundTrip">Battery round-trip efficiency</label>
             <input type="number" id="roundTrip" step="0.01" min="0.5" max="1" value="0.9" />
           </div>
         </div>
         <div class="row">
           <div class="field">
-            <label for="performanceRatio">Performance ratio</label>
+            <label for="performanceRatio" data-i18n="step2.performanceRatio">Performance ratio</label>
             <input type="number" id="performanceRatio" step="0.01" min="0.5" max="1" value="0.86" />
           </div>
           <div class="field">
-            <label for="tariffEscalation">Yearly electricity price rise (%)</label>
-            <input type="number" id="tariffEscalation" step="0.5" min="0" value="0" />
+            <label for="tariffEscalation" data-i18n="step2.tariffEscalation">Yearly electricity price rise (%)</label>
+            <input type="number" id="tariffEscalation" step="0.5" min="0" max="20" value="0" />
           </div>
         </div>
       </details>
@@ -133,25 +146,33 @@
     <div class="compare-grid" id="compareGrid"></div>
 
     <section class="result-block verdict-block" id="verdictBlock" hidden>
-      <h2>Side by side</h2>
+      <h2 data-i18n="compare.delta.h2">Side by side</h2>
       <div id="deltaBody"></div>
     </section>
 
     <details class="advanced assumptions-panel" id="assumptions" hidden>
-      <summary>What this estimate assumes</summary>
+      <summary data-i18n="assumptions.summary">What this estimate assumes</summary>
       <div id="assumptions-body"></div>
     </details>
 
     <footer class="page-footer">
-      <p>
+      <p data-i18n-html="footer.credit">
         Sunlight data from <a href="https://re.jrc.ec.europa.eu/pvg_tools/en/">PVGIS</a> (European
         Commission JRC). Place names from <a href="https://www.geonames.org/">GeoNames</a>
         (CC&nbsp;BY&nbsp;4.0). This is a screening tool, not a quote or an engineering study.
+      </p>
+      <p data-i18n-html="footer.provenance">
+        Vibe-coded by Alejandro Pena-Bello — the whole source is on
+        <a href="https://github.com/alefunxo/PV-advisor">GitHub</a>. A more advanced,
+        solver-based version of this tool lives at
+        <a href="https://gitlab.hevs.ch/ted/screen_project">gitlab.hevs.ch/ted/screen_project</a>
+        and will be open sourced shortly.
       </p>
     </footer>
   </main>
 
   <script src="js/vendor/chart.umd.js"></script>
+  <script src="js/i18n.js"></script>
   <script src="js/data/load-profiles.js"></script>
   <script src="js/calc/pv.js"></script>
   <script src="js/calc/climate.js"></script>

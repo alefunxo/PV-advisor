@@ -15,6 +15,9 @@
 const ShareState = (() => {
   // Long name -> query-string key. Anything not listed here does not travel.
   const KEYS = {
+    // The reader's language travels with the scenario under the same key js/i18n.js reads
+    // everywhere else, so a comparison link arrives in the language it was sent in.
+    lang: "lang",
     country: "c",
     cityName: "town",
     orientation: "az",

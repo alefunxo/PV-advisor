@@ -24,6 +24,13 @@
 const Charts = (() => {
   const instances = new Map();
 
+  // Series names are the only words in this file. It sits in the UI layer, not the calc layer,
+  // so it reads them from the catalogue directly rather than having every caller thread eleven
+  // labels through. The caller re-renders on a language change exactly as it does on a theme
+  // change — a canvas cannot restyle or relabel itself.
+  // (`t` is already taken here for the resolved theme, so the catalogue helper is `tr`.)
+  const tr = (key) => I18n.t(key);
+
   function cssVar(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   }
@@ -127,9 +134,11 @@ const Charts = (() => {
   function monthly(canvasId, { labels, direct, battery, grid, hasBattery, kwhFmt, yMax = null }) {
     const t = theme();
     const series = [
-      { label: "Solar, used straight away", data: direct, color: t.solar },
-      ...(hasBattery ? [{ label: "Solar, via the battery", data: battery, color: t.battery }] : []),
-      { label: "Bought from the grid", data: grid, color: t.grid },
+      { label: tr("chart.series.direct"), data: direct, color: t.solar },
+      ...(hasBattery
+        ? [{ label: tr("chart.series.viaBattery"), data: battery, color: t.battery }]
+        : []),
+      { label: tr("chart.series.imported"), data: grid, color: t.grid },
     ];
 
     render(canvasId, {
@@ -170,9 +179,9 @@ const Charts = (() => {
   function split(canvasId, { direct, throughBattery, exported, kwhFmt }) {
     const t = theme();
     const slices = [
-      { label: "Used straight away", value: direct, color: t.solar },
-      { label: "Stored in the battery", value: throughBattery, color: t.battery },
-      { label: "Sent to the grid", value: exported, color: t.exported },
+      { label: tr("chart.slice.direct"), value: direct, color: t.solar },
+      { label: tr("chart.slice.stored"), value: throughBattery, color: t.battery },
+      { label: tr("chart.slice.exported"), value: exported, color: t.exported },
     ];
     const total = slices.reduce((a, s) => a + s.value, 0);
     const share = (v) => (total > 0 ? `${Math.round((v / total) * 100)}%` : "0%");
@@ -250,7 +259,7 @@ const Charts = (() => {
         labels: hours,
         datasets: [
           {
-            label: "Solar produced",
+            label: tr("chart.series.production"),
             data: production,
             borderColor: t.solar,
             backgroundColor: wash(t.solar, 0.1),
@@ -263,7 +272,7 @@ const Charts = (() => {
             pointHoverBorderColor: t.surface,
           },
           {
-            label: "Your electricity use",
+            label: tr("chart.series.load"),
             data: load,
             borderColor: t.inkSecondary,
             borderWidth: 2,
@@ -295,7 +304,7 @@ const Charts = (() => {
     const t = theme();
     const datasets = [
       {
-        label: "Solar system",
+        label: tr("chart.series.pvSystem"),
         data: solar,
         borderColor: t.solar,
         backgroundColor: t.solar,
@@ -310,7 +319,7 @@ const Charts = (() => {
     ];
     if (battery) {
       datasets.push({
-        label: "Battery, on top",
+        label: tr("chart.series.batteryOnTop"),
         data: battery,
         borderColor: t.battery,
         backgroundColor: t.battery,
@@ -332,7 +341,12 @@ const Charts = (() => {
         o.scales.x.stacked = false;
         o.scales.y.stacked = false;
         o.scales.x.ticks.maxTicksLimit = 9;
-        o.scales.x.title = { display: true, text: "Years from installation", color: t.inkSecondary, font: { size: 11 } };
+        o.scales.x.title = {
+          display: true,
+          text: tr("chart.axis.years"),
+          color: t.inkSecondary,
+          font: { size: 11 },
+        };
         // Break-even is the one line worth drawing on top of the grid.
         o.scales.y.grid = {
           color: (ctx) => (ctx.tick.value === 0 ? t.axis : t.gridline),

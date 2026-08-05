@@ -74,12 +74,14 @@ const LoadProfiles = (() => {
   // exactly the midwinter hours when the heat pump works hardest and the sun is weakest.
 
   // Typical space-heating intensity by building vintage, kWh of heat per m² per year.
+  // The dropdown wording is a catalogue key, not a sentence: this module stays language-free
+  // and the UI layer turns the key into words.
   const BUILDING_STANDARDS = {
-    old: { label: "Before 1980, little insulation", kwhPerM2: 160 },
-    mid: { label: "1980–2000", kwhPerM2: 105 },
-    recent: { label: "2000–2010", kwhPerM2: 70 },
-    modern: { label: "After 2010, or fully renovated", kwhPerM2: 45 },
-    passive: { label: "Passive house / Minergie-P", kwhPerM2: 25 },
+    old: { labelKey: "building.old", kwhPerM2: 160 },
+    mid: { labelKey: "building.mid", kwhPerM2: 105 },
+    recent: { labelKey: "building.recent", kwhPerM2: 70 },
+    modern: { labelKey: "building.modern", kwhPerM2: 45 },
+    passive: { labelKey: "building.passive", kwhPerM2: 25 },
   };
 
   // Below this outdoor temperature the building needs heat. Internal gains and solar gains

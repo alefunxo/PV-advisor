@@ -17,6 +17,9 @@ const PV = (() => {
   async function load(url = "js/data/regional-yield.json") {
     if (corrections) return corrections;
     const res = await fetch(url);
+    // fetch() only rejects on a network failure, so a 404 would otherwise arrive here as an
+    // HTML body and fail later as a syntax error with no hint of where it came from.
+    if (!res.ok) throw new Error(`PV: ${url} → ${res.status}`);
     corrections = await res.json();
     return corrections;
   }
