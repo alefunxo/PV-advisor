@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Suite — the methodology page</title>
+</head>
+<body>
+<pre id="out">running…</pre>
+<iframe id="frame" style="width:1100px;height:700px;border:1px solid #ccc"></iframe>
+
+<script src="harness.js"></script>
+<script>
+// A methodology page that has drifted from the engine is worse than none, and prose cannot be
+// trusted to stay in step by hand. So the load-bearing half of this suite reads every constant
+// the page quotes back out of the module that uses it.
+//
+// That comparison has to be locale-aware: numbers inside translated prose use each language's
+// decimal mark, so a German page says 0,42 where the module says 0.42. The prose is normalised
+// back to a plain form per locale before anything is matched.
+const { ok, note, waitFor, loadFrame, evaller, norm, run } = window.Harness;
+const frame = document.getElementById("frame");
+
+const LANGS = ["en", "de", "fr", "es", "it"];
+
+// The subjects the page is required to cover, and the heading key each lives under.
+const REQUIRED_SECTIONS = [
+  "method.h.data", "method.h.production", "method.h.load", "method.h.temperature",
+  "method.h.assets", "method.h.dispatch", "method.h.money", "method.h.limits",
+];
+
+// A phrase from the orientation-provenance paragraph in each language, so a catalogue that
+// silently fell back to English is caught rather than passing on "the element has text".
+const FINGERPRINT = {
+  en: "four land points", de: "vier über seine Längengrade",
+  fr: "quatre points terrestres", es: "cuatro puntos en tierra",
+  it: "quattro punti su terraferma",
+};
+
+// ---------------------------------------------------------------- number handling
+const escapeRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function localeSeparators(locale) {
+  const parts = new Intl.NumberFormat(locale).formatToParts(1234567.8);
+  const of = (type) => (parts.find((p) => p.type === type) || {}).value || "";
+  return { group: of("group"), decimal: of("decimal") || "." };
+}
+
+// Turns "0,42" into "0.42" and "1 210" / "1.210" into "1210", so a plain figure read off a
+// module can be looked for in prose written in any of the five languages.
+function toPlainNumbers(text, locale) {
+  const { group, decimal } = localeSeparators(locale);
+  let out = String(text).replace(/[    ]/g, " ");
+  const strip = (sep) => {
+    if (!sep) return;
+    out = out.replace(new RegExp(`(\\d)${escapeRe(sep)}(\\d{3})(?!\\d)`, "g"), "$1$2");
+  };
+  strip(group);
+  strip(" "); // the prose groups with a plain space too ("8 760 hours")
+  if (decimal !== ".") {
+    out = out.replace(new RegExp(`(\\d)${escapeRe(decimal)}(\\d)`, "g"), "$1.$2");
+  }
+  return out;
+}
+
+// A plain, unpadded rendering: 0.42 rather than 0.420, 15 rather than 15.0.
+const plain = (value, digits = 5) => String(Number(Number(value).toFixed(digits)));
+
+const quotes = (text, value) =>
+  new RegExp(`(^|[^\\d.,])${escapeRe(value)}(?![\\d])`).test(text);
+
+run(async () => {
+  // ------------------------------------------------ the constants, from the modules
+  const wizard = await loadFrame(frame, "../index.html?lang=en");
+  if (!await waitFor(() => wizard.getElementById("country").options.length > 0,
+                     "the wizard's data")) return;
+  const probeSrc = await (await fetch("methodology-probe.js")).text();
+  const c = await evaller(frame)(probeSrc)();
+
+  note(`${c.cityCount} towns, bands ${c.latitudeBands.join("/")}, ` +
+       `COP ${plain(c.carnotEfficiency)}× Carnot clamped ${plain(c.copMin)}–${plain(c.copMax)}`);
+
+  // Several of these are recovered by driving a module rather than reading an exported
+  // constant, so check the recovery landed on something sane before trusting it against prose.
+  ok("the round trip is split as a square root",
+     Math.abs(c.oneWayEfficiency - c.expectedOneWay) < 1e-9,
+     `${c.oneWayEfficiency} vs ${c.expectedOneWay}`);
+  ok("the battery starts the year empty", c.batteryStartsEmpty, "it discharged in hour one");
+  ok("cash flows are discounted at the end of the year",
+     Math.abs(c.discountExponentAtYearOne - 1) < 1e-9, c.discountExponentAtYearOne);
+  ok("the battery earns nothing when there is no spread",
+     Math.abs(c.batteryNoSpreadBenefit) < 1e-9, c.batteryNoSpreadBenefit);
+  ok("every band still averages four land points", c.pointsPerBand.every((n) => n === 4),
+     c.pointsPerBand.join(","));
+  ok("the orientation table was fetched with the horizon off",
+     /usehorizon\s*=\s*0/.test(c.referenceHorizon), c.referenceHorizon);
+  ok("the reference mounting is free-standing", c.referenceMounting === "free", c.referenceMounting);
+
+  // Each entry: the catalogue key whose prose must quote it, what it is, and the value the
+  // module actually uses.
+  const CLAIMS = [
+    ["method.production.hourly.intro", "the hours in a year", plain(c.hoursInYear)],
+    ["method.assets.intro", "the hours in a year, again", plain(c.hoursInYear)],
+    ["method.data.pvgis.dd", "the number of towns", plain(c.cityCount)],
+    ["method.data.pvgis.dd", "the reference tilt", plain(c.referenceTilt)],
+    ["method.data.pvgis.dd", "the reference system losses", plain(c.referenceSystemLossPct)],
+    ["method.production.annual.p", "the reference performance ratio",
+     plain(c.referencePerformanceRatio)],
+    ["method.data.perTown.p2", "the lowest latitude band", plain(c.latitudeBands[0])],
+    ["method.data.perTown.p2", "the highest latitude band",
+     plain(c.latitudeBands[c.latitudeBands.length - 1])],
+
+    ["method.assets.hp.intensity.old", "the pre-1980 heating intensity",
+     plain(c.buildingIntensities.old)],
+    ["method.assets.hp.intensity.mid", "the mid-vintage heating intensity",
+     plain(c.buildingIntensities.mid)],
+    ["method.assets.hp.intensity.recent", "the recent heating intensity",
+     plain(c.buildingIntensities.recent)],
+    ["method.assets.hp.intensity.modern", "the modern heating intensity",
+     plain(c.buildingIntensities.modern)],
+    ["method.assets.hp.intensity.passive", "the passive-house heating intensity",
+     plain(c.buildingIntensities.passive)],
+    ["method.assets.hp.degreeDays", "the heating degree-day base", plain(c.heatingBaseC)],
+    ["method.assets.hp.copFormula", "the Carnot fraction", plain(c.carnotEfficiency)],
+    ["method.assets.hp.copFormula", "the lower COP clamp", plain(c.copMin)],
+    ["method.assets.hp.copFormula", "the upper COP clamp", plain(c.copMax)],
+    ["method.assets.ev.energy", "the charging loss", plain(c.chargingLossPct)],
+    ["method.assets.ac.demand", "the cooling degree-hour base", plain(c.coolingBaseC)],
+    ["method.assets.ac.demand", "the cooling intensity", plain(c.coolingIntensity)],
+
+    ["method.dispatch.step2", "the battery power limit", plain(c.cRate)],
+    ["method.money.year.p", "the O&M rate", plain(c.omPctOfCapex)],
+    ["method.money.year.p", "the panel degradation rate", plain(c.degradationPctPerYear)],
+
+    ["method.temperature.p1", "the diurnal amplitude", plain(c.diurnalAmplitude)],
+    ["method.temperature.p1", "the warmest hour", plain(c.warmestHour)],
+    ["method.load.p1", "the December load factor", plain(c.seasonalHigh)],
+    ["method.load.p1", "the July load factor", plain(c.seasonalLow)],
+
+    ["method.production.hourly.why", "Madrid's measured June/January ratio",
+     plain(Math.round(c.junJanMadrid * 10) / 10)],
+    ["method.production.hourly.why", "Oslo's measured June/January ratio",
+     plain(Math.round(c.junJanOslo * 10) / 10)],
+  ];
+
+  // ---------------------------------------------------- the page, in five languages
+  const base = await (await fetch("../js/i18n/en.json")).json();
+  const bundle = await (await fetch("../js/i18n/methodology.en.json")).json();
+  const enCat = Object.assign({}, base, bundle);
+
+  for (const lang of LANGS) {
+    const doc = await loadFrame(frame, `../methodology.html?lang=${lang}`);
+    if (!await waitFor(() => {
+      const el = doc.querySelector('[data-i18n-html="method.data.perTown.p3"]');
+      return el && norm(el.textContent).includes(FINGERPRINT[lang]);
+    }, `the page in ${lang}`)) continue;
+
+    const locale = evaller(frame)("I18n.locale");
+    const keyed = (key) => doc.querySelector(`[data-i18n="${key}"], [data-i18n-html="${key}"]`);
+    // A contents entry deliberately shares its key with the heading it points at, and comes
+    // first in the document — so a section heading has to be asked for as a heading.
+    const heading = (key) => doc.querySelector(`h2[data-i18n="${key}"]`);
+
+    // --- it really is this language, not an English fallback
+    const p3 = keyed("method.data.perTown.p3");
+    ok(`${lang}: the orientation provenance is on the page`, !!p3, "missing");
+    ok(`${lang}: it is translated, not left in English`,
+       norm(p3.textContent).includes(FINGERPRINT[lang]), norm(p3.textContent).slice(0, 90));
+    ok(`${lang}: its markup survived`, !!p3.querySelector("strong") && !!p3.querySelector("em"),
+       p3.innerHTML.slice(0, 110));
+    ok(`${lang}: it sits directly after the interpolation paragraph`,
+       p3.previousElementSibling === keyed("method.data.perTown.p2"), "out of order");
+    ok(`${lang}: no raw catalogue key rendered anywhere`,
+       !/\bmethod\.[a-z]+\.[a-zA-Z.]+\b/.test(doc.body.textContent),
+       (doc.body.textContent.match(/\bmethod\.[a-z]+\.[a-zA-Z.]+\b/) || [""])[0]);
+
+    // --- every subject the page has to cover
+    const missingSections = REQUIRED_SECTIONS.filter((key) => {
+      const h = heading(key);
+      return !h || !h.id || h.textContent.trim().length < 3;
+    });
+    ok(`${lang}: every required subject has a heading`, missingSections.length === 0,
+       missingSections.join(", "));
+
+    const thin = REQUIRED_SECTIONS.filter((key) => {
+      const h = heading(key);
+      if (!h) return true;
+      // Everything between this heading and the next section heading.
+      let node = h.nextElementSibling;
+      let chars = 0;
+      while (node && node.tagName !== "H2") {
+        chars += node.textContent.length;
+        node = node.nextElementSibling;
+      }
+      return chars < 200;
+    });
+    ok(`${lang}: every subject is written out, not just titled`, thin.length === 0,
+       thin.join(", "));
+
+    // --- the contents
+    const toc = [...doc.querySelectorAll(".toc a")];
+    const brokenToc = toc.filter((a) => {
+      const h = doc.querySelector(a.getAttribute("href"));
+      return !h || h.textContent.trim() !== a.textContent.trim();
+    });
+    ok(`${lang}: every contents entry resolves to its heading (${toc.length})`,
+       toc.length >= REQUIRED_SECTIONS.length && brokenToc.length === 0,
+       brokenToc.map((a) => a.getAttribute("href")).join(", ") || `only ${toc.length} entries`);
+
+    // --- the constants, against the modules
+    const misquoted = [];
+    for (const [key, label, value] of CLAIMS) {
+      const el = keyed(key);
+      if (!el) {
+        misquoted.push(`${key} is not on the page (${label})`);
+        continue;
+      }
+      if (!quotes(toPlainNumbers(el.textContent, locale), value)) {
+        misquoted.push(`${label} (${value}) is not in ${key}`);
+      }
+    }
+    ok(`${lang}: every constant in the prose matches the module that uses it (${CLAIMS.length})`,
+       misquoted.length === 0, misquoted.slice(0, 6).join(" | "));
+
+    // --- English only: the inline fallback must equal the catalogue word for word
+    if (lang === "en") {
+      const drift = [];
+      doc.querySelectorAll("[data-i18n], [data-i18n-html]").forEach((el) => {
+        const isHtml = el.hasAttribute("data-i18n-html");
+        const key = isHtml ? el.dataset.i18nHtml : el.dataset.i18n;
+        if (!(key in enCat)) return drift.push(`${key} (not in en.json)`);
+        const onPage = norm(isHtml ? el.innerHTML : el.textContent);
+        if (onPage !== norm(enCat[key])) drift.push(key);
+      });
+      ok("en: every keyed element matches en.json word for word", drift.length === 0,
+         drift.slice(0, 6).join(", "));
+    }
+  }
+
+  // ------------------------------------------------------------------ the nav
+  // The method belongs in the header of every page. Comparison mode never does — it stays
+  // reachable only from the end of the wizard.
+  for (const page of ["index.html", "compare.html", "methodology.html"]) {
+    const src = await (await fetch(`../${page}`)).text();
+    const parsed = new DOMParser().parseFromString(src, "text/html");
+    const nav = parsed.querySelector(".site-nav");
+    const hrefs = nav ? [...nav.querySelectorAll("a")].map((a) => a.getAttribute("href")) : [];
+    // The methodology page itself links back to the advisor rather than to itself.
+    const expected = page === "methodology.html" ? "index.html" : "methodology.html";
+    ok(`${page}: the header links to ${expected}`, hrefs.some((h) => h.includes(expected)),
+       hrefs.join(", ") || "no .site-nav");
+    ok(`${page}: comparison mode is absent from the header`,
+       !!nav && !hrefs.some((h) => h.includes("compare.html")), hrefs.join(", "));
+  }
+
+  // Both results pages close their assumptions panel with a pointer to the whole method.
+  for (const page of ["index.html", "compare.html"]) {
+    const src = await (await fetch(`../${page}`)).text();
+    ok(`${page}: there is an assumptions panel to link on from`,
+       /id="assumptions"/.test(src) && /id="assumptions-body"/.test(src), "no assumptions panel");
+  }
+  ok("the assumptions panel points at the whole method",
+     typeof enCat["assump.methodLink"] === "string" &&
+     /methodology\.html/.test(enCat["assump.methodLink"]),
+     enCat["assump.methodLink"]);
+});
+</script>
+</body>
+</html>

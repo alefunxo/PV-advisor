@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Scratch suite — mobile layout</title>
+</head>
+<body>
+<pre id="out">running…</pre>
+<!--
+  The three breakpoints are 520 px (the .row field pairs collapse), 720 px (the results chart
+  grid goes to one column) and 860 px (comparison mode stacks and drops the delta cell). Each
+  is checked from both sides: a breakpoint asserted only below its width would still pass if
+  the rule had been written to apply everywhere.
+
+  Resizing the iframe is a real viewport change as far as the framed document's media queries
+  are concerned, so this tests the shipped CSS rather than a re-implementation of it. What it
+  cannot see is anything the browser chrome does — pinch zoom, the address bar, touch target
+  sizing — so those stay eyeball work.
+
+  Two rules about canvases here, both learned the hard way.
+
+  Never measure a canvas's own width under --dump-dom. Chart.js sizes its canvas from the
+  rendering pipeline, and --dump-dom runs layout without paint, so the number is whatever it
+  was when the chart was built: a wizard chart that visibly renders at full width reports 0,
+  and a comparison chart reports its old desktop width long after the column has narrowed.
+  An earlier version of this file asserted on those numbers and produced two confident
+  failures against a layout that screenshots at 384 px show is correct. Layout — .chart-frame,
+  .chart-card, the grids — is measured normally; it comes from layout, not from paint.
+
+  And measure overflow on a page *loaded* at the target width rather than resized to it. That
+  is what a phone does, and it sidesteps the stale-canvas problem entirely, because the chart
+  is constructed once the column already has its final width.
+-->
+<iframe id="frame" style="border:1px solid #ccc"></iframe>
+<script>
+const results = [];
+const ok = (name, cond, detail) => results.push((cond ? "PASS " : "FAIL ") + name + (cond ? "" : "  << " + detail));
+
+const frame = document.getElementById("frame");
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function setWidth(px) {
+  frame.style.width = px + "px";
+  frame.style.height = "900px";
+  // Reading a layout property flushes the resize into the framed document synchronously; the
+  // wait after it is for the framed page's own resize handlers. Deliberately not
+  // requestAnimationFrame: headless Chrome under --virtual-time-budget has no compositor
+  // driving rAF, so a rAF-gated promise never settles and the suite hangs on "running…".
+  void frame.contentDocument.documentElement.offsetWidth;
+  await sleep(120);
+}
+
+function load(url, width) {
+  frame.style.width = width + "px";
+  frame.style.height = "900px";
+  return new Promise((resolve) => {
+    frame.addEventListener("load", function once() {
+      frame.removeEventListener("load", once);
+      resolve(frame.contentDocument);
+    });
+    frame.src = url;
+  });
+}
+
+async function waitFor(doc, fn, label) {
+  for (let i = 0; i < 200; i++) {
+    try { if (fn(doc)) return true; } catch (e) {}
+    await sleep(50);
+  }
+  results.push("FAIL timed out waiting for " + label);
+  return false;
+}
+
+// How many grid tracks a computed grid-template-columns resolves to. Chrome reports used
+// values ("360px" / "173.5px 173.5px"), so counting them is counting columns.
+const tracks = (el) => {
+  const v = frame.contentWindow.getComputedStyle(el).gridTemplateColumns;
+  return v === "none" ? 0 : v.trim().split(/\s+/).length;
+};
+
+// The failure this catches is a page the reader has to scroll sideways to finish a sentence.
+// One pixel of slack: sub-pixel layout rounding shows up as scrollWidth 391 against 390.
+// Only sound on a page loaded at this width — see the note at the top about stale canvases.
+function noSideScroll(doc, label) {
+  const de = doc.documentElement;
+  ok("no horizontal scroll — " + label, de.scrollWidth <= de.clientWidth + 1,
+     de.scrollWidth + " > " + de.clientWidth);
+  // A single overflowing element is the usual cause, and naming it saves the hunt.
+  if (de.scrollWidth > de.clientWidth + 1) {
+    const wide = [...doc.body.querySelectorAll("*")]
+      .filter((el) => el.getBoundingClientRect().right > de.clientWidth + 1)
+      .slice(0, 4).map((el) => el.tagName.toLowerCase() + (el.id ? "#" + el.id : "." + el.className));
+    results.push("       widest offenders: " + wide.join(", "));
+  }
+}
+
+// A chart's *container* is layout, so it is safe to measure; the canvas inside it is not.
+function chartFramesFit(doc, label) {
+  const wide = [...doc.querySelectorAll(".chart-frame")]
+    .filter((f) => f.getBoundingClientRect().width > doc.documentElement.clientWidth + 1)
+    .map((f) => f.closest(".chart-card")?.id || "(card)");
+  ok("every chart frame fits the viewport — " + label, wide.length === 0, wide.join(", "));
+}
+
+const stepShown = (doc, n) => !doc.querySelector(`.step[data-step="${n}"]`).classList.contains("hidden");
+
+// Walk the wizard to the results dashboard on its defaults.
+async function toResults(doc) {
+  for (let n = 1; n <= 3; n++) {
+    doc.getElementById("nextBtn").click();
+    if (!await waitFor(doc, (d) => stepShown(d, n + 1), "step " + (n + 1))) return false;
+  }
+  return await waitFor(doc, (d) => !!frame.contentWindow.Chart.getChart(d.getElementById("chartMonthly")),
+                       "results charts");
+}
+
+// ------------------------------------------------------- 520 px: field pairs
+async function testFieldPairs() {
+  const doc = await load("../index.html?lang=en", 390);
+  if (!await waitFor(doc, (d) => d.getElementById("country").options.length > 0, "country list")) return;
+
+  const row = doc.querySelector(".step[data-step='1'] .row");
+  ok(".row is one column at 390 px", tracks(row) === 1, tracks(row) + " tracks");
+  noSideScroll(doc, "wizard at 390 px");
+
+  await setWidth(519);
+  ok(".row is still one column at 519 px", tracks(row) === 1, tracks(row) + " tracks");
+
+  await setWidth(521);
+  ok(".row is two columns at 521 px", tracks(row) === 2, tracks(row) + " tracks");
+
+  await setWidth(390);
+  // Collapsed pairs stack, so the two fields must not overlap or sit side by side.
+  const fields = [...row.children].filter((el) => el.offsetParent !== null);
+  if (fields.length >= 2) {
+    const a = fields[0].getBoundingClientRect(), b = fields[1].getBoundingClientRect();
+    ok("collapsed field pairs stack vertically", b.top >= a.bottom - 1,
+       `second field top ${Math.round(b.top)} vs first bottom ${Math.round(a.bottom)}`);
+  }
+}
+
+// ------------------------------------------------------- 720 px: chart grid
+async function testChartGrid() {
+  const doc = await load("../index.html?lang=en", 700);
+  if (!await waitFor(doc, (d) => d.getElementById("country").options.length > 0, "country list")) return;
+  if (!await toResults(doc)) return;
+
+  const grid = doc.querySelector(".chart-grid");
+  ok(".chart-grid is one column at 700 px", tracks(grid) === 1, tracks(grid) + " tracks");
+  noSideScroll(doc, "results at 700 px");
+  chartFramesFit(doc, "results at 700 px");
+
+  await setWidth(721);
+  ok(".chart-grid is multi-column at 721 px", tracks(grid) > 1, tracks(grid) + " tracks");
+
+  await setWidth(719);
+  ok(".chart-grid is one column again at 719 px", tracks(grid) === 1, tracks(grid) + " tracks");
+
+  // The phone case, on a page built at phone width rather than narrowed into it.
+  const phone = await load("../index.html?lang=en", 390);
+  if (!await waitFor(phone, (d) => d.getElementById("country").options.length > 0, "country list (390)")) return;
+  if (!await toResults(phone)) return;
+  ok(".chart-grid is one column at 390 px", tracks(phone.querySelector(".chart-grid")) === 1,
+     tracks(phone.querySelector(".chart-grid")) + " tracks");
+  noSideScroll(phone, "results at 390 px");
+  chartFramesFit(phone, "results at 390 px");
+
+  // The results step widens the body; that must not become a horizontal scroll on a phone.
+  ok("results-wide is still applied at 390 px", phone.body.classList.contains("results-wide"),
+     phone.body.className);
+}
+
+// ---------------------------------------- 860 px: comparison mode stacks
+async function testCompareStacking() {
+  // Reached the way a visitor reaches it, so the URL under test is the one the wizard builds.
+  const wiz = await load("../index.html?lang=en", 1200);
+  if (!await waitFor(wiz, (d) => d.getElementById("country").options.length > 0, "country list")) return;
+  if (!await toResults(wiz)) return;
+
+  const arrived = new Promise((resolve) => {
+    frame.addEventListener("load", function once() {
+      frame.removeEventListener("load", once);
+      resolve(frame.contentDocument);
+    });
+  });
+  wiz.getElementById("compareBtn").click();
+  const doc = await arrived;
+  if (!await waitFor(doc, (d) => !!d.getElementById("chartMonthly-b"), "comparison columns")) return;
+  const chartOf = (col) => frame.contentWindow.Chart.getChart(doc.getElementById("chartMonthly-" + col));
+  if (!await waitFor(doc, () => chartOf("a") && chartOf("b"), "both monthly charts")) return;
+
+  // --- desktop, both sides of the breakpoint
+  const grid = doc.getElementById("compareGrid");
+  ok(".compare-grid is two columns at 1200 px", tracks(grid) === 2, tracks(grid) + " tracks");
+  const row = doc.querySelector("#deltaBody .delta-row:not(.head)");
+  ok(".delta-row has four cells at 1200 px", tracks(row) === 4, tracks(row) + " tracks");
+  const cell4 = row.children[3];
+  ok("the delta cell is visible at 1200 px",
+     frame.contentWindow.getComputedStyle(cell4).display !== "none", "display none");
+
+  await setWidth(861);
+  ok(".compare-grid is still two columns at 861 px", tracks(grid) === 2, tracks(grid) + " tracks");
+
+  // Side-by-side alignment is a desktop-width property: the blocks in the two columns line up
+  // so the eye can scan across. Worth pinning here, because it is the reason every row is
+  // rendered in both columns even when it does not apply.
+  await setWidth(1200);
+  const topOf = (sel) => Math.round(doc.querySelector(sel).getBoundingClientRect().top);
+  ok("the two charts sit at the same height at 1200 px",
+     Math.abs(topOf("#chartMonthly-a") - topOf("#chartMonthly-b")) <= 1,
+     `${topOf("#chartMonthly-a")} vs ${topOf("#chartMonthly-b")}`);
+  ok("the two energy blocks sit at the same height at 1200 px",
+     Math.abs(topOf("#energy-a") - topOf("#energy-b")) <= 1,
+     `${topOf("#energy-a")} vs ${topOf("#energy-b")}`);
+
+  // --- stacked
+  await setWidth(500);
+  ok(".compare-grid is one column at 500 px", tracks(grid) === 1, tracks(grid) + " tracks");
+  ok(".delta-row drops to three cells at 500 px", tracks(row) === 3, tracks(row) + " tracks");
+  ok("the delta cell is hidden at 500 px",
+     frame.contentWindow.getComputedStyle(cell4).display === "none",
+     frame.contentWindow.getComputedStyle(cell4).display);
+
+  // Columns really are one above the other, not two squeezed side by side.
+  const colA = doc.querySelector('.compare-col[data-col="a"]');
+  const colB = doc.querySelector('.compare-col[data-col="b"]');
+  ok("column B sits below column A when stacked",
+     colB.getBoundingClientRect().top >= colA.getBoundingClientRect().bottom - 1,
+     `B top ${Math.round(colB.getBoundingClientRect().top)} vs A bottom ${Math.round(colA.getBoundingClientRect().bottom)}`);
+  ok("the columns are the same width when stacked",
+     Math.abs(colA.getBoundingClientRect().width - colB.getBoundingClientRect().width) <= 1,
+     `${colA.getBoundingClientRect().width} vs ${colB.getBoundingClientRect().width}`);
+
+  // The one thing stacking must NOT relax. Vertically stacked bars are still read against
+  // each other, so independently scaled axes mislead exactly as badly as side by side.
+  const ya = chartOf("a").scales.y, yb = chartOf("b").scales.y;
+  ok("the two monthly charts share a y-axis maximum when stacked",
+     Math.abs(ya.max - yb.max) < 1e-6, `${ya.max} vs ${yb.max}`);
+  ok("the two monthly charts share a y-axis minimum when stacked",
+     Math.abs(ya.min - yb.min) < 1e-6, `${ya.min} vs ${yb.min}`);
+  ok("the shared maximum is a real number", Number.isFinite(ya.max) && ya.max > 0, String(ya.max));
+
+  // Same again on a comparison page loaded at phone width from the start, which is both the
+  // real phone case and the only one where the canvas has its final size.
+  const url = frame.contentWindow.location.search;
+  const phone = await load("../compare.html" + url, 384);
+  if (!await waitFor(phone, (d) => !!d.getElementById("chartMonthly-b"), "columns at 384 px")) return;
+  const pChart = (col) => frame.contentWindow.Chart.getChart(phone.getElementById("chartMonthly-" + col));
+  if (!await waitFor(phone, () => pChart("a") && pChart("b"), "both charts at 384 px")) return;
+
+  ok(".compare-grid is one column at 384 px", tracks(phone.getElementById("compareGrid")) === 1,
+     tracks(phone.getElementById("compareGrid")) + " tracks");
+  ok("the shared y-axis holds on a page loaded at 384 px",
+     Math.abs(pChart("a").scales.y.max - pChart("b").scales.y.max) < 1e-6,
+     `${pChart("a").scales.y.max} vs ${pChart("b").scales.y.max}`);
+  noSideScroll(phone, "comparison at 384 px");
+  chartFramesFit(phone, "comparison at 384 px");
+
+  // The locked-house summary and the excluded-cost notice are the two things a reader must
+  // not lose when the layout collapses — one fixes what is being compared, the other says
+  // what the money figure leaves out.
+  ok("the locked-house summary survives at 384 px",
+     phone.getElementById("houseSummary").getBoundingClientRect().height > 0, "collapsed to nothing");
+  ok("the delta block survives at 384 px",
+     phone.getElementById("deltaBody").getBoundingClientRect().height > 0, "collapsed to nothing");
+}
+
+// ------------------------------------------------- every page, every width
+// Resizing rather than reloading is safe here: neither the wizard's first step nor the
+// methodology page has a canvas on it, so there is no stale chart size to trip over.
+async function testNoOverflowEverywhere() {
+  const widths = [320, 390, 520, 720, 860, 1200];
+  for (const page of ["../index.html?lang=en", "../methodology.html?lang=en"]) {
+    const doc = await load(page, widths[0]);
+    const ready = page.startsWith("index")
+      ? (d) => d.getElementById("country").options.length > 0
+      : (d) => d.readyState === "complete";
+    if (!await waitFor(doc, ready, page + " ready")) continue;
+    for (const w of widths) {
+      await setWidth(w);
+      noSideScroll(doc, page.split("?")[0] + " at " + w + " px");
+    }
+  }
+}
+
+(async () => {
+  try {
+    await testFieldPairs();
+    await testChartGrid();
+    await testCompareStacking();
+    await testNoOverflowEverywhere();
+  } catch (e) {
+    results.push("FAIL threw: " + (e && e.stack || e));
+  }
+  const fails = results.filter((r) => r.startsWith("FAIL")).length;
+  document.getElementById("out").textContent =
+    results.join("\n") + "\n\n" + (fails ? fails + " FAILURES" : "ALL PASS (" + results.length + ")");
+})();
+</script>
+</body>
+</html>

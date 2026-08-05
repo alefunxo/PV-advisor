@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Suite — five languages</title>
+</head>
+<body>
+<pre id="out">running…</pre>
+<iframe id="frame" style="width:1200px;height:900px;border:1px solid #ccc"></iframe>
+
+<script src="harness.js"></script>
+<script>
+// Milestone 9 end to end: the catalogues agree with each other, the inline English fallback
+// agrees with en.json, and switching language in place retranslates everything without
+// recomputing anything or resetting what the user typed.
+//
+// Two kinds of check run here and they are not interchangeable. Comparing the page against the
+// catalogue catches drift; a hard-coded phrase in each language catches a catalogue that has
+// quietly fallen back to English, which comparing against the catalogue never would.
+const { ok, note, waitFor, sleep, loadFrame, evaller, norm, run } = window.Harness;
+const frame = document.getElementById("frame");
+
+const LANGS = ["en", "de", "fr", "es", "it"];
+const PAGES = ["index.html", "compare.html", "methodology.html"];
+
+let doc, win, ev;
+const $ = (id) => doc.getElementById(id);
+
+run(async () => {
+  const errors = [];
+
+  // ------------------------------------------------------------- the catalogues
+  const cats = {};
+  const bundles = {};
+  for (const l of LANGS) {
+    cats[l] = await (await fetch(`../js/i18n/${l}.json`)).json();
+    bundles[l] = await (await fetch(`../js/i18n/methodology.${l}.json`)).json();
+  }
+  const keysOf = (o) => Object.keys(o).filter((k) => !k.startsWith("_meta"));
+
+  const enKeys = keysOf(cats.en);
+  const enBundleKeys = keysOf(bundles.en);
+  note(`${enKeys.length} base keys, ${enBundleKeys.length} methodology keys, ${LANGS.length} languages`);
+
+  for (const l of LANGS.slice(1)) {
+    for (const [what, mine, theirs] of [["base", enKeys, keysOf(cats[l])],
+                                        ["methodology bundle", enBundleKeys, keysOf(bundles[l])]]) {
+      const missing = mine.filter((k) => !theirs.includes(k));
+      const extra = theirs.filter((k) => !mine.includes(k));
+      ok(`${l}: the ${what} carries exactly the English key set`,
+         !missing.length && !extra.length,
+         [missing.length ? "missing " + missing.slice(0, 5).join(",") : "",
+          extra.length ? "extra " + extra.slice(0, 5).join(",") : ""].filter(Boolean).join(" | "));
+    }
+  }
+
+  // Every {slot} has to survive translation, or a number goes missing from a sentence.
+  const slots = (s) => (String(s).match(/\{\w+\}/g) || []).slice().sort().join(",");
+  for (const l of LANGS.slice(1)) {
+    for (const [what, en, other] of [["base", cats.en, cats[l]],
+                                     ["methodology bundle", bundles.en, bundles[l]]]) {
+      const bad = keysOf(en).filter((k) => other[k] !== undefined && slots(en[k]) !== slots(other[k]));
+      ok(`${l}: every placeholder survives into the ${what}`, bad.length === 0,
+         bad.slice(0, 5).join(", "));
+    }
+  }
+
+  const unbalanced = [];
+  for (const l of LANGS) {
+    [cats[l], bundles[l]].forEach((cat) => {
+      Object.entries(cat).forEach(([k, v]) => {
+        const open = (String(v).match(/<strong>/g) || []).length;
+        const close = (String(v).match(/<\/strong>/g) || []).length;
+        if (open !== close) unbalanced.push(`${l}:${k}`);
+      });
+    });
+  }
+  ok("<strong> stays balanced in every catalogue", unbalanced.length === 0, unbalanced.join(", "));
+
+  // --------------------------------------- the inline English is the real fallback
+  // The English text stays in the HTML so the pages read correctly before the catalogue has
+  // been fetched and with no JavaScript at all. That duplication is only a fallback while the
+  // two agree, so this is what stops them drifting.
+  const sources = {};
+  for (const p of PAGES) sources[p] = await (await fetch(`../${p}`)).text();
+
+  const catFor = {
+    "index.html": cats.en,
+    "compare.html": cats.en,
+    "methodology.html": Object.assign({}, cats.en, bundles.en),
+  };
+
+  let checked = 0;
+  const drift = [];
+  for (const p of PAGES) {
+    const cat = catFor[p];
+    const parsed = new DOMParser().parseFromString(sources[p], "text/html");
+    parsed.querySelectorAll("[data-i18n], [data-i18n-html]").forEach((el) => {
+      checked++;
+      const isHtml = el.hasAttribute("data-i18n-html");
+      const key = isHtml ? el.dataset.i18nHtml : el.dataset.i18n;
+      if (!(key in cat)) return drift.push(`${p}: ${key} is not in en.json`);
+      const onPage = norm(isHtml ? el.innerHTML : el.textContent);
+      if (onPage !== norm(cat[key])) drift.push(`${p}: ${key}`);
+    });
+    // A contents entry that points at a heading that no longer exists is a broken page, and
+    // one that uses a different key from its heading will read differently once translated.
+    parsed.querySelectorAll(".toc a").forEach((a) => {
+      const target = parsed.querySelector(a.getAttribute("href"));
+      if (!target) drift.push(`${p}: contents entry ${a.getAttribute("href")} has no heading`);
+      else if (target.dataset.i18n !== a.dataset.i18n)
+        drift.push(`${p}: contents entry ${a.getAttribute("href")} and its heading use different keys`);
+    });
+  }
+  ok(`the inline English matches en.json word for word (${checked} keyed elements)`,
+     drift.length === 0, drift.slice(0, 6).join(" | "));
+
+  for (const p of PAGES) {
+    const parsed = new DOMParser().parseFromString(sources[p], "text/html");
+    const nav = parsed.querySelector(".site-nav");
+    ok(`${p}: the language picker is in the header`, !!(nav && nav.querySelector("#langSelect")),
+       nav ? nav.innerHTML.slice(0, 80) : "no .site-nav");
+    ok(`${p}: comparison mode is still absent from the nav`,
+       !!nav && ![...nav.querySelectorAll("a")].some((a) => a.getAttribute("href").includes("compare.html")),
+       nav ? [...nav.querySelectorAll("a")].map((a) => a.getAttribute("href")).join(", ") : "no .site-nav");
+  }
+
+  // ------------------------------------------------------------------- the wizard
+  doc = await loadFrame(frame, "../index.html?lang=en");
+  win = frame.contentWindow;
+  ev = evaller(frame);
+  if (!await waitFor(() => $("city") && $("city").options.length > 0, "the wizard's city list")) return;
+  win.addEventListener("error", (e) => errors.push("wizard: " + e.message));
+
+  ok("the URL pins the language", ev("I18n.lang") === "en", ev("I18n.lang"));
+  ok("generated prose is translated",
+     $("sizeDerived").textContent === "That is roughly a 4.8 kWp system.",
+     $("sizeDerived").textContent);
+  ok("data-driven lists are translated",
+     $("hpStandard").options[0].textContent === "Before 1980, little insulation",
+     $("hpStandard").options[0].textContent);
+  ok("buttons are translated", $("nextBtn").textContent === "Continue", $("nextBtn").textContent);
+
+  // Country names come from Intl.DisplayNames rather than the catalogues — thirty names that
+  // would otherwise have to be kept in step across five files.
+  const countryText = () => $("country").selectedOptions[0].textContent;
+  ok("country names are resolved from the ISO code", countryText() === "Switzerland", countryText());
+  ok("the country list is sorted for the locale",
+     [...$("country").options].map((o) => o.textContent)
+       .every((n, i, a) => i === 0 || new Intl.Collator("en-GB").compare(a[i - 1], n) <= 0),
+     "out of order");
+  // City names are the opposite case: GeoNames endonyms, never translated, because
+  // translating Zürich makes it harder to find rather than easier.
+  ok("city names are never translated",
+     [...$("city").options].some((o) => o.textContent === "Zürich"), "Zürich not in the list");
+
+  $("nextBtn").click(); await sleep(60);
+  $("nextBtn").click(); await sleep(60);
+  ok("the last step relabels its button", $("nextBtn").textContent === "See my results",
+     $("nextBtn").textContent);
+  $("hpEnabled").checked = true;
+  $("hpEnabled").dispatchEvent(new win.Event("change", { bubbles: true }));
+  $("nextBtn").click();
+  if (!await waitFor(() => $("results-body").textContent.length > 50, "the results")) return;
+
+  const resultsText = () => doc.querySelector('.step[data-step="4"]').textContent;
+  const RAW_KEY = /\b(results|assump|unit|compare|chart|asset|nav|error|notice)\.[a-zA-Z.]+/;
+
+  ok("no NaN or undefined in the results", !/NaN|undefined|\[object/.test(resultsText()),
+     (resultsText().match(/.{0,40}(NaN|undefined|\[object).{0,40}/) || [""])[0]);
+  ok("no raw catalogue key in the results", !RAW_KEY.test(resultsText()),
+     (resultsText().match(RAW_KEY) || [""])[0]);
+  // Reworded so no language needs an article that agrees with a digit — article() had to go
+  // for the catalogues to work at all.
+  ok("the battery heading needs no article in front of a digit",
+     /Adding the 8 kWh battery/.test(resultsText()), "heading reworded?");
+  ok("the uncosted notice names the heat pump", /heat pump/i.test($("costNotice").textContent),
+     $("costNotice").textContent);
+
+  const chart = () => win.Chart.getChart($("chartMonthly"));
+  ok("chart series names come from the catalogue",
+     chart().data.datasets[0].label === cats.en["chart.series.direct"] ||
+     chart().data.datasets[0].label === "Solar, used straight away",
+     chart().data.datasets[0].label);
+  // Month abbreviations come from Intl.DateTimeFormat, not the catalogues: a catalogue entry
+  // for "Feb" would be four more chances to get a month name wrong.
+  ok("month labels come from Intl", chart().data.labels[0] === "Jan",
+     chart().data.labels.join(","));
+  ok("the day-profile heading is translated", $("summerTitle").textContent === "A typical July day",
+     $("summerTitle").textContent);
+
+  const enHeadline = doc.querySelector("#results-body .headline").textContent.trim();
+
+  // --------------------------------------------- switching language in place
+  // A language change costs a re-render, never a rebuild: Scenario.build() is
+  // language-independent, so nothing here is recomputed.
+  await ev('I18n.setLang("de")');
+  await sleep(600);
+
+  ok("the document language follows", doc.documentElement.lang === "de", doc.documentElement.lang);
+  ok("the URL follows", /lang=de/.test(win.location.search), win.location.search);
+  ok("static DOM is retranslated",
+     doc.querySelector('.steps li span[data-i18n]').textContent === "Ihr Haus",
+     doc.querySelector('.steps li span[data-i18n]').textContent);
+  ok("generated prose is retranslated", /Mit dem Speicher von 8 kWh/.test(resultsText()),
+     (resultsText().match(/.{0,60}Speicher.{0,30}/) || [""])[0]);
+  ok("chart series are relabelled",
+     chart().data.datasets[0].label === "Solar, sofort verbraucht",
+     chart().data.datasets[0].label);
+  ok("month labels follow the locale", chart().data.labels.length === 12,
+     chart().data.labels.join(","));
+  ok("the wizard did not lose its place", !doc.querySelector('.step[data-step="4"]').classList.contains("hidden"),
+     "the step changed under the language switch");
+
+  const deHeadline = doc.querySelector("#results-body .headline").textContent.trim();
+  ok("number grouping follows the language", deHeadline !== enHeadline,
+     `${enHeadline}  →  ${deHeadline}`);
+  // ...but the currency does not: a French speaker in Switzerland still wants CHF.
+  ok("the currency does not follow the language", $("currency").value === "CHF",
+     $("currency").value);
+  ok("no raw catalogue key after switching", !RAW_KEY.test(resultsText()),
+     (resultsText().match(RAW_KEY) || [""])[0]);
+  ok("country names follow the language", countryText() === "Schweiz", countryText());
+  ok("city names still do not", [...$("city").options].some((o) => o.textContent === "Zürich"),
+     "Zürich went missing");
+  ok("the assumptions panel names the country in German",
+     /Schweiz/.test($("assumptions-body").textContent),
+     (($("assumptions-body").textContent.match(/PVGIS[^.]{0,50}/) || [""])[0]));
+  ok("internal links carry the language",
+     /lang=de/.test(doc.querySelector(".site-nav a").getAttribute("href")),
+     doc.querySelector(".site-nav a").getAttribute("href"));
+
+  await ev('I18n.setLang("es")');
+  await sleep(500);
+  ok("Spanish reaches the assumptions panel too",
+     /estimación preliminar/i.test($("assumptions-body").textContent),
+     $("assumptions-body").textContent.slice(0, 90));
+
+  // ---------------------------------------- the hand-off to comparison mode
+  const navigated = new Promise((r) => frame.addEventListener("load", r, { once: true }));
+  $("compareBtn").click();
+  await navigated;
+  doc = frame.contentDocument;
+  win = frame.contentWindow;
+  ev = evaller(frame);
+  win.addEventListener("error", (e) => errors.push("compare: " + e.message));
+  if (!await waitFor(() => $("deltaBody") && $("deltaBody").textContent.length > 40,
+                     "comparison mode")) return;
+
+  ok("the language survived the hand-off", ev("I18n.lang") === "es", ev("I18n.lang"));
+  ok("comparison mode opened on the scenario", !$("housePanel").hidden, "no house panel");
+  ok("the generated columns are translated",
+     doc.querySelector(".compare-col h2").textContent === "Instalación A",
+     doc.querySelector(".compare-col h2").textContent);
+  ok("the house summary is translated", /Municipio/.test($("houseSummary").textContent),
+     $("houseSummary").textContent.slice(0, 80));
+  ok("the zero-diff sentence is translated",
+     $("deltaBody").textContent.includes(cats.es["compare.delta.identical"]),
+     $("deltaBody").textContent.slice(0, 100));
+  ok("the uncosted notice carried the heat pump across",
+     !$("costNotice").hidden && /bomba de calor/.test($("costNotice").textContent),
+     $("costNotice").textContent);
+  ok("no NaN or undefined in comparison mode", !/NaN|undefined|\[object/.test(doc.body.textContent),
+     (doc.body.textContent.match(/.{0,40}(NaN|undefined|\[object).{0,40}/) || [""])[0]);
+  ok("no raw catalogue key in comparison mode", !RAW_KEY.test(doc.body.textContent),
+     (doc.body.textContent.match(RAW_KEY) || [""])[0]);
+
+  // Regenerating the column markup on a language change must not reset what the user typed.
+  $("kwp-b").value = "9";
+  $("kwp-b").dispatchEvent(new win.Event("input", { bubbles: true }));
+  await sleep(500);
+  await ev('I18n.setLang("it")');
+  await sleep(700);
+  ok("column inputs survive a language change", $("kwp-b").value === "9", $("kwp-b").value);
+  ok("the columns are retranslated",
+     doc.querySelector(".compare-col h2").textContent === "Impianto A",
+     doc.querySelector(".compare-col h2").textContent);
+
+  // ------------------------------------------------------- the methodology page
+  const toMethod = new Promise((r) => frame.addEventListener("load", r, { once: true }));
+  frame.src = "../methodology.html?lang=fr";
+  await toMethod;
+  doc = frame.contentDocument;
+  win = frame.contentWindow;
+  win.addEventListener("error", (e) => errors.push("methodology: " + e.message));
+  if (!await waitFor(() => doc.querySelector("h1") &&
+                           doc.querySelector("h1").textContent === "Comment ça marche",
+                     "the methodology page in French")) return;
+
+  // The long-form prose is a separate bundle: the wizard should not download an essay it
+  // never shows.
+  ok("the methodology page loads its extra bundle",
+     doc.querySelector("h1").textContent === "Comment ça marche", doc.querySelector("h1").textContent);
+  ok("its prose is translated", /pompe à chaleur/.test(doc.querySelector(".doc").textContent),
+     "no French found in .doc");
+  ok("no raw method key reached the page", !/\bmethod\.[a-zA-Z.]+/.test(doc.body.textContent),
+     (doc.body.textContent.match(/\bmethod\.[a-zA-Z.]+/) || [""])[0]);
+  const toc = [...doc.querySelectorAll(".toc a")];
+  ok(`every contents entry resolves to its heading (${toc.length})`,
+     toc.length > 0 && toc.every((a) => {
+       const h = doc.querySelector(a.getAttribute("href"));
+       return h && h.textContent.trim() === a.textContent.trim();
+     }),
+     toc.filter((a) => {
+       const h = doc.querySelector(a.getAttribute("href"));
+       return !h || h.textContent.trim() !== a.textContent.trim();
+     }).map((a) => a.getAttribute("href")).join(", "));
+  ok("keys from the base catalogue still resolve on this page",
+     /Avant 1980, peu isolé/.test(doc.querySelector(".doc-list.compact").textContent),
+     doc.querySelector(".doc-list.compact").textContent.slice(0, 80));
+  ok("the way back keeps the language",
+     /lang=fr/.test(doc.querySelector(".site-nav a").getAttribute("href")),
+     doc.querySelector(".site-nav a").getAttribute("href"));
+
+  ok("no page raised an error in any language", errors.length === 0, errors.join(" | "));
+});
+</script>
+</body>
+</html>

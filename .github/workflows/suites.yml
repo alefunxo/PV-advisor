@@ -1,0 +1,37 @@
+# The eight browser suites, on every push and pull request.
+#
+# This does not touch how the site is deployed. GitHub Pages still serves the repo root as-is,
+# with no build step and nothing generated at deploy time — this workflow only serves the same
+# files to a headless browser and reads the verdict back. _tests/run.py is the same entry point
+# used locally, so a green run here means the same thing as a green run on a laptop.
+name: Suites
+
+on:
+  push:
+  pull_request:
+
+# A second push to the same branch makes the first run's answer irrelevant.
+concurrency:
+  group: suites-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser-suites:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Only the standard library is used, by the runner and by scripts/fetch_pvgis.py alike.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Preinstalled on the GitHub-hosted Ubuntu images. Printed so that a version-related
+      # failure is obvious in the log rather than something to bisect.
+      - name: Show the browser version
+        run: google-chrome --version
+
+      - name: Run the suites
+        run: python _tests/run.py

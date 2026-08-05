@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- Without this, literal m² or an accented city name in an assertion silently mis-decodes
+       and produces a phantom failure. -->
+  <meta charset="utf-8" />
+  <title>Suite — calc engine</title>
+</head>
+<body>
+<pre id="out">running…</pre>
+<iframe id="frame" style="width:1000px;height:600px;border:0"></iframe>
+
+<script src="harness.js"></script>
+<script>
+// Direction of effect, not golden numbers. The synthetic profiles are allowed to move when
+// somebody improves them; what must never move is which way each lever pushes. Where a figure
+// is genuinely fixed by a formula — the annual sums, the COP clamps, the discounting — it is
+// asserted exactly.
+const { ok, note, waitFor, loadFrame, evaller, run } = window.Harness;
+const frame = document.getElementById("frame");
+
+const near = (a, b, tol) => Math.abs(a - b) <= tol;
+const pct = (x) => (100 * x).toFixed(1) + "%";
+
+run(async () => {
+  // ------------------------------------------------------- the orientation table
+  // Read straight out of the file: these are properties of the committed data, and they hold
+  // whether or not the engine is loaded.
+  const grid = await (await fetch("../js/data/regional-yield.json")).json();
+  const bands = grid.tiltAzimuthGridsByLatBand;
+
+  ok("the table records its sample points", !!grid.meta.referenceBandPoints, grid.meta);
+  ok("four land points per band",
+     Object.values(grid.meta.referenceBandPoints).every((p) => p.length === 4),
+     grid.meta.referenceBandPoints);
+  // Recorded as prose rather than a flag, so match on the parameter it names: the claim the
+  // methodology page makes is specifically that the fetch passed usehorizon=0.
+  ok("the local horizon was disabled when it was built",
+     /usehorizon\s*=\s*0/.test(String(grid.meta.referenceHorizon)),
+     grid.meta.referenceHorizon);
+  ok("the mounting is recorded and is free-standing",
+     grid.meta.referenceMounting === "free", grid.meta.referenceMounting);
+
+  for (const b of Object.keys(bands)) {
+    const f = bands[b].factors;
+    ok(`band ${b}: south beats east and west at 35°`,
+       f["35"]["0"] > f["35"]["-90"] && f["35"]["0"] > f["35"]["90"], f["35"]);
+    ok(`band ${b}: a vertical wall is worse than a 35° roof`,
+       f["90"]["0"] < f["35"]["0"], `${f["90"]["0"]} vs ${f["35"]["0"]}`);
+    ok(`band ${b}: a flat roof is worse than 35° south`,
+       f["0"]["0"] < f["35"]["0"], `${f["0"]["0"]} vs ${f["35"]["0"]}`);
+    ok(`band ${b}: east and west are within 3% of each other`,
+       Math.abs(f["35"]["-90"] / f["35"]["90"] - 1) < 0.03,
+       `${f["35"]["-90"]} vs ${f["35"]["90"]}`);
+  }
+  // 35° south is the reference cell by construction, so it must be exactly 1 everywhere.
+  ok("35° south is 1.000 in every band",
+     Object.keys(bands).every((b) => near(bands[b].factors["35"]["0"], 1, 1e-9)),
+     Object.keys(bands).map((b) => `${b}:${bands[b].factors["35"]["0"]}`).join(" "));
+
+  // ------------------------------------------------------------------ the engine
+  await loadFrame(frame, "../index.html?lang=en");
+  if (!await waitFor(() => frame.contentDocument.getElementById("country").options.length > 0,
+                     "the wizard to finish loading its data")) return;
+
+  const ev = evaller(frame);
+  const probeSrc = await (await fetch("engine-probe.js")).text();
+  const probe = ev(probeSrc);
+  const r = await probe("CH", "Zürich");
+
+  note(`${r.site.name} at ${r.site.lat.toFixed(1)}°N — ${Math.round(r.site.specificYield35S)} kWh/kWp, ` +
+       `Jan ${r.site.janMeanC.toFixed(1)} °C, Jul ${r.site.julMeanC.toFixed(1)} °C`);
+
+  // --- the city record ---------------------------------------------------------
+  ok("the city carries its own measured yield", r.site.specificYield35S > 400, r.site.specificYield35S);
+  ok("its monthly shape is a distribution summing to 1",
+     near(r.site.monthlyShapeSum, 1, 0.005), r.site.monthlyShapeSum);
+  ok("its January is the city's, not the alpine cell's", r.site.janMeanC > -3, r.site.janMeanC);
+
+  // --- base load ---------------------------------------------------------------
+  ok("the base load is 8760 steps", r.baseLoad.length === 8760, r.baseLoad.length);
+  ok("it sums to the stated annual consumption", near(r.baseLoad.sum, 4500, 1e-6), r.baseLoad.sum);
+  ok("no hour is zero or negative", r.baseLoad.min > 0, r.baseLoad.min);
+  ok("winter draws more than summer", r.baseLoad.janSum > r.baseLoad.julSum,
+     `Jan ${r.baseLoad.janSum.toFixed(0)} vs Jul ${r.baseLoad.julSum.toFixed(0)}`);
+  ok("the evening peak is above the small hours", r.baseLoad.eveningVsNight > 2,
+     r.baseLoad.eveningVsNight);
+  ok("adding an asset series does not mutate the base load",
+     near(r.baseLoad.sumAfterAdds, 4500, 1e-6), r.baseLoad.sumAfterAdds);
+
+  // --- climate -----------------------------------------------------------------
+  ok("the temperature series is 8760 steps", r.climate.length === 8760, r.climate.length);
+  ok("its January mean reproduces the city's January",
+     near(r.climate.janMean, r.site.janMeanC, 1), `${r.climate.janMean} vs ${r.site.janMeanC}`);
+  ok("its July mean reproduces the city's July",
+     near(r.climate.julMean, r.site.julMeanC, 1), `${r.climate.julMean} vs ${r.site.julMeanC}`);
+  ok("the diurnal swing is the stated 10 K peak to peak",
+     near(r.climate.diurnalRange, 10, 0.1), r.climate.diurnalRange);
+  ok("the warmest hour is mid-afternoon", r.climate.warmestHourOfDay === 15,
+     r.climate.warmestHourOfDay);
+  ok("there are heating degree hours and cooling degree hours",
+     r.climate.heatingDegreeHours > 0 && r.climate.coolingDegreeHours > 0,
+     `${r.climate.heatingDegreeHours.toFixed(0)} / ${r.climate.coolingDegreeHours.toFixed(0)}`);
+
+  // --- heat pump ---------------------------------------------------------------
+  ok("the COP falls as it gets colder",
+     r.cop.atMinus10 < r.cop.atZero && r.cop.atZero < r.cop.atPlus10,
+     `${r.cop.atMinus10} < ${r.cop.atZero} < ${r.cop.atPlus10}`);
+  ok("underfloor heating beats old radiators at the same outdoor temperature",
+     r.cop.underfloorAtZero > r.cop.oldRadiatorsAtZero,
+     `${r.cop.underfloorAtZero} vs ${r.cop.oldRadiatorsAtZero}`);
+  ok("the COP is clamped at the bottom", near(r.cop.clampedLow, r.cop.min, 1e-9), r.cop.clampedLow);
+  ok("the COP is clamped at the top", near(r.cop.clampedHigh, r.cop.max, 1e-9), r.cop.clampedHigh);
+
+  ok("heat demand is floor area times the building intensity",
+     near(r.hp.heatDemandKwh, r.hp.expectedHeatDemandKwh, 1e-9),
+     `${r.hp.heatDemandKwh} vs ${r.hp.expectedHeatDemandKwh}`);
+  ok("the series sums to the electricity the heat pump draws",
+     near(r.hp.seriesSum, r.hp.electricityKwh, 1e-6),
+     `${r.hp.seriesSum} vs ${r.hp.electricityKwh}`);
+  ok("the seasonal COP sits inside the hourly clamps",
+     r.hp.seasonalCOP > r.cop.min && r.hp.seasonalCOP < r.cop.max, r.hp.seasonalCOP);
+  ok("electricity is less than the heat delivered", r.hp.electricityKwh < r.hp.heatDemandKwh,
+     `${r.hp.electricityKwh.toFixed(0)} vs ${r.hp.heatDemandKwh}`);
+  // The degree-day convention: heating is decided from the day's mean, so a cool July night
+  // must not fire the heat pump.
+  ok("it does not run in July", r.hp.julShare < 0.001, pct(r.hp.julShare));
+  ok("it runs hardest in January", r.hp.janShare > 0.15, pct(r.hp.janShare));
+
+  // --- electric car ------------------------------------------------------------
+  ok("charging energy includes the 10% charging loss",
+     near(r.ev.dumbKwh, r.ev.expectedKwh, 1e-9), `${r.ev.dumbKwh} vs ${r.ev.expectedKwh}`);
+  ok("both strategies move the same annual energy",
+     near(r.ev.dumbKwh, r.ev.solarKwh, 1e-9), `${r.ev.dumbKwh} vs ${r.ev.solarKwh}`);
+  ok("evening charging puts nothing into the middle of the day",
+     r.ev.dumbNoonShare < 0.01, r.ev.dumbNoonShare);
+  ok("evening charging peaks in the evening", r.ev.dumbEveningShare > 3, r.ev.dumbEveningShare);
+  ok("solar charging peaks at midday", r.ev.solarNoonShare > 3, r.ev.solarNoonShare);
+
+  // --- air conditioning --------------------------------------------------------
+  ok("there is cooling demand at this city", r.ac.coolingDemandKwh > 0, r.ac.coolingDemandKwh);
+  ok("electricity is the cooling demand divided by the SEER",
+     near(r.ac.electricityKwh, r.ac.coolingDemandKwh / r.ac.seer, 1e-9), r.ac.electricityKwh);
+  ok("cooling lands in summer", r.ac.julShare > 0.3, pct(r.ac.julShare));
+  ok("there is no cooling in January", r.ac.janShare < 1e-9, pct(r.ac.janShare));
+
+  // --- PV ----------------------------------------------------------------------
+  ok("35° south beats east, west, flat and vertical",
+     r.pv.south35 > r.pv.east35 && r.pv.south35 > r.pv.west35 &&
+     r.pv.south35 > r.pv.flat && r.pv.south35 > r.pv.vertical,
+     `S ${r.pv.south35.toFixed(0)} E ${r.pv.east35.toFixed(0)} W ${r.pv.west35.toFixed(0)} ` +
+     `flat ${r.pv.flat.toFixed(0)} wall ${r.pv.vertical.toFixed(0)}`);
+  ok("35° south reproduces the city's measured yield exactly",
+     near(r.pv.south35, r.site.specificYield35S, 0.5),
+     `${r.pv.south35} vs ${r.site.specificYield35S}`);
+  ok("the hourly series is anchored on the annual total",
+     near(r.pv.hourlySum, r.pv.expectedAnnual, 1e-6),
+     `${r.pv.hourlySum} vs ${r.pv.expectedAnnual}`);
+  ok("nothing is produced at two in the morning", r.pv.nightIsZero, "found production at 02:00");
+  // Pure geometry gives roughly 1.6 everywhere; the measured envelope is what makes this big.
+  ok("the measured seasonal envelope survives into the hourly shape",
+     r.pv.junJanRatio > 2.5, `June/January = ${r.pv.junJanRatio.toFixed(2)}`);
+  note(`June/January production ratio ${r.pv.junJanRatio.toFixed(2)} — geometry alone gives ~1.6`);
+
+  // --- energy balance ----------------------------------------------------------
+  for (const [name, f] of Object.entries(r.flows)) {
+    ok(`${name}: the load side closes`,
+       near(f.selfConsumed + f.imported, f.totalLoad, 1e-6),
+       `${f.selfConsumed + f.imported} vs ${f.totalLoad}`);
+    // The production side closes up to whatever is still in the battery at midnight on the
+    // 31st, which cannot exceed its capacity.
+    const accounted = f.directSelfConsumed + f.batteryDischargeToLoad + f.chargeLosses +
+                      f.dischargeLosses + f.exported;
+    ok(`${name}: the production side closes`,
+       f.totalProduction - accounted >= -1e-6 &&
+       f.totalProduction - accounted <= r.buckets.capacity + 1e-6,
+       `${f.totalProduction} vs ${accounted}`);
+    ok(`${name}: no rate escapes 0–100%`,
+       f.selfConsumptionRate >= 0 && f.selfConsumptionRate <= 1 &&
+       f.selfSufficiencyRate >= 0 && f.selfSufficiencyRate <= 1,
+       `${f.selfConsumptionRate} / ${f.selfSufficiencyRate}`);
+  }
+
+  // --- direction of effect -----------------------------------------------------
+  const base = r.flows.base;
+  ok("a battery raises self-consumption",
+     r.flows.baseBattery.selfConsumptionRate > base.selfConsumptionRate,
+     `${pct(base.selfConsumptionRate)} → ${pct(r.flows.baseBattery.selfConsumptionRate)}`);
+  ok("a battery raises self-sufficiency",
+     r.flows.baseBattery.selfSufficiencyRate > base.selfSufficiencyRate,
+     `${pct(base.selfSufficiencyRate)} → ${pct(r.flows.baseBattery.selfSufficiencyRate)}`);
+  ok("a battery exports less", r.flows.baseBattery.exported < base.exported,
+     `${base.exported.toFixed(0)} → ${r.flows.baseBattery.exported.toFixed(0)}`);
+  ok("a battery cycles a plausible number of times a year",
+     r.flows.baseBattery.equivalentFullCycles > 50 && r.flows.baseBattery.equivalentFullCycles < 365,
+     r.flows.baseBattery.equivalentFullCycles);
+
+  ok("a heat pump lowers self-sufficiency",
+     r.flows.hp.selfSufficiencyRate < base.selfSufficiencyRate,
+     `${pct(base.selfSufficiencyRate)} → ${pct(r.flows.hp.selfSufficiencyRate)}`);
+  ok("a heat pump raises self-consumption",
+     r.flows.hp.selfConsumptionRate > base.selfConsumptionRate,
+     `${pct(base.selfConsumptionRate)} → ${pct(r.flows.hp.selfConsumptionRate)}`);
+
+  ok("daytime charging beats evening charging on self-consumption",
+     r.flows.evSolar.selfConsumptionRate > r.flows.evDumb.selfConsumptionRate,
+     `${pct(r.flows.evDumb.selfConsumptionRate)} vs ${pct(r.flows.evSolar.selfConsumptionRate)}`);
+  ok("daytime charging beats evening charging on self-sufficiency",
+     r.flows.evSolar.selfSufficiencyRate > r.flows.evDumb.selfSufficiencyRate,
+     `${pct(r.flows.evDumb.selfSufficiencyRate)} vs ${pct(r.flows.evSolar.selfSufficiencyRate)}`);
+  ok("both strategies leave the household using the same total",
+     near(r.flows.evDumb.totalLoad, r.flows.evSolar.totalLoad, 1e-6),
+     `${r.flows.evDumb.totalLoad} vs ${r.flows.evSolar.totalLoad}`);
+
+  ok("air conditioning raises self-consumption",
+     r.flows.ac.selfConsumptionRate > base.selfConsumptionRate,
+     `${pct(base.selfConsumptionRate)} → ${pct(r.flows.ac.selfConsumptionRate)}`);
+  // It is the one asset that fits the solar year, so it should cost far less self-sufficiency
+  // than the heat pump does.
+  ok("air conditioning barely dents self-sufficiency, unlike the heat pump",
+     (base.selfSufficiencyRate - r.flows.ac.selfSufficiencyRate) <
+     (base.selfSufficiencyRate - r.flows.hp.selfSufficiencyRate),
+     `AC −${pct(base.selfSufficiencyRate - r.flows.ac.selfSufficiencyRate)} vs ` +
+     `HP −${pct(base.selfSufficiencyRate - r.flows.hp.selfSufficiencyRate)}`);
+
+  // --- bucketed flows ----------------------------------------------------------
+  ok("month buckets cover the twelve months", r.buckets.count === 12, r.buckets.count);
+  for (const field of Object.keys(r.buckets.totals)) {
+    ok(`month buckets re-sum to the annual ${field}`,
+       near(r.buckets.totals[field], r.buckets.annual[field], 1e-6),
+       `${r.buckets.totals[field]} vs ${r.buckets.annual[field]}`);
+  }
+
+  // --- economics ---------------------------------------------------------------
+  const e = r.economics;
+  ok("a dearer retail price is worth more", e.npvDear > e.npvCheap,
+     `${e.npvCheap.toFixed(0)} → ${e.npvDear.toFixed(0)}`);
+  ok("a dearer system is worth less", e.npvHighCapex < e.npvLowCapex,
+     `${e.npvLowCapex.toFixed(0)} → ${e.npvHighCapex.toFixed(0)}`);
+  ok("payback is finite for a plausible system", Number.isFinite(e.payback) && e.payback > 0,
+     e.payback);
+  ok("payback is Infinity when it never pays back", e.neverPaysBack === Infinity, e.neverPaysBack);
+  ok("degradation makes a later year worth less", e.degradedYear10 < e.year0,
+     `${e.year0.toFixed(0)} → ${e.degradedYear10.toFixed(0)}`);
+  ok("tariff escalation outruns degradation", e.escalatedYear10 > e.degradedYear10,
+     `${e.degradedYear10.toFixed(0)} → ${e.escalatedYear10.toFixed(0)}`);
+  ok("cash flows are discounted at the end of the year",
+     near(e.oneYearNpv, e.oneYearExpected, 1e-9), `${e.oneYearNpv} vs ${e.oneYearExpected}`);
+  ok("the cumulative curve starts at what you paid",
+     near(e.cumulativeFirst, -e.capex, 1e-9), e.cumulativeFirst);
+  ok("the cumulative curve has one point per year plus the purchase",
+     e.cumulativeLength === 26, e.cumulativeLength);
+  ok("solar lowers the bill", e.bill.withPv < e.bill.noPv,
+     `${e.bill.noPv.toFixed(0)} → ${e.bill.withPv.toFixed(0)}`);
+
+  // The battery's case is the retail/feed-in spread, not the retail price: close the spread
+  // and the same battery stops earning anything.
+  ok("the battery earns on a wide spread", e.batteryWideSpread.year1Benefit > 0,
+     e.batteryWideSpread.year1Benefit);
+  ok("the battery earns nothing when exports pay retail",
+     e.batteryNoSpread.year1Benefit <= 0, e.batteryNoSpread.year1Benefit);
+  ok("the battery's NPV follows the spread",
+     e.batteryWideSpread.npv > e.batteryNoSpread.npv,
+     `${e.batteryWideSpread.npv.toFixed(0)} vs ${e.batteryNoSpread.npv.toFixed(0)}`);
+  ok("the battery displaces exports to gain self-consumption",
+     e.batteryWideSpread.extraSelfConsumed > 0 && e.batteryWideSpread.lostExport > 0,
+     `${e.batteryWideSpread.extraSelfConsumed.toFixed(0)} / ${e.batteryWideSpread.lostExport.toFixed(0)}`);
+  ok("round-trip losses mean it gains less than it gives up",
+     e.batteryWideSpread.extraSelfConsumed < e.batteryWideSpread.lostExport,
+     `${e.batteryWideSpread.extraSelfConsumed} vs ${e.batteryWideSpread.lostExport}`);
+
+  // --- Scenario ----------------------------------------------------------------
+  const s = r.scenario;
+  ok("with no extras, consumption is the base household",
+     near(s.none.totalConsumption, s.none.baselineConsumption, 1e-9),
+     `${s.none.totalConsumption} vs ${s.none.baselineConsumption}`);
+  ok("enabling the heat pump raises consumption",
+     s.hp.totalConsumption > s.none.totalConsumption,
+     `${s.none.totalConsumption.toFixed(0)} → ${s.hp.totalConsumption.toFixed(0)}`);
+  ok("capex is panels plus battery", near(s.none.totalCapex, s.none.expectedCapex, 1e-9),
+     `${s.none.totalCapex} vs ${s.none.expectedCapex}`);
+  ok("no extras means no per-asset rows", s.none.assetDeltaCount === 0, s.none.assetDeltaCount);
+  ok("one extra means one per-asset row", s.hp.assetDeltaCount === 1, s.hp.assetDeltaCount);
+  ok("the cash-flow curve spans the system lifetime", s.none.cashFlowYears === 26,
+     s.none.cashFlowYears);
+  ok("the day profiles come from two 24-hour groups plus a discard",
+     s.none.dayProfileBuckets === 49, s.none.dayProfileBuckets);
+
+  ok("the per-asset delta is attributed to the heat pump", s.hp.delta && s.hp.delta.key === "hp",
+     s.hp.delta);
+  ok("the heat pump's own delta lowers self-sufficiency",
+     s.hp.delta.to < s.hp.delta.from, `${pct(s.hp.delta.from)} → ${pct(s.hp.delta.to)}`);
+  ok("the heat pump's own delta adds imports and self-consumption",
+     s.hp.delta.extraImport > 0 && s.hp.delta.extraSelfConsumed > 0, s.hp.delta);
+
+  // Scenario.compute must be doing the same dispatch anyone else would do with the model's
+  // own series — nothing extra, nothing rescaled.
+  for (const field of ["selfConsumed", "exported", "imported", "directSelfConsumed",
+                       "batteryDischargeToLoad", "chargeLosses", "dischargeLosses"]) {
+    ok(`Scenario.compute matches a hand-rolled dispatch on ${field}`,
+       near(s.none.withBattery[field], s.handRolled[field], 1e-9),
+       `${s.none.withBattery[field]} vs ${s.handRolled[field]}`);
+  }
+  ok("direct use, battery throughput and exports account for all production",
+     near(s.none.withBattery.directSelfConsumed + s.batteryThroughput +
+          s.none.withBattery.exported, s.none.withBattery.totalProduction, r.buckets.capacity),
+     `${s.none.withBattery.directSelfConsumed + s.batteryThroughput + s.none.withBattery.exported}` +
+     ` vs ${s.none.withBattery.totalProduction}`);
+
+  // Two models from one params object: computing against one must not disturb the other.
+  ok("two models from one params object hold separate arrays", s.independence.separateArrays,
+     "they share an array");
+  ok("computing against one model leaves the other's base load alone",
+     near(s.independence.baseLoadSumA, s.independence.baseLoadSumB, 1e-9),
+     `${s.independence.baseLoadSumA} vs ${s.independence.baseLoadSumB}`);
+  ok("computing against one model leaves the other's production alone",
+     near(s.independence.productionSumA, s.independence.productionSumB, 1e-9),
+     `${s.independence.productionSumA} vs ${s.independence.productionSumB}`);
+
+  // --- nothing anywhere is NaN -------------------------------------------------
+  const bad = [];
+  (function walk(node, path) {
+    if (typeof node === "number") {
+      if (Number.isNaN(node)) bad.push(path);
+      return;
+    }
+    if (node && typeof node === "object") {
+      Object.entries(node).forEach(([k, v]) => walk(v, path ? `${path}.${k}` : k));
+    }
+  })(r, "");
+  ok("no figure anywhere in the engine is NaN", bad.length === 0, bad.slice(0, 8).join(", "));
+});
+</script>
+</body>
+</html>

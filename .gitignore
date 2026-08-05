@@ -1,7 +1,8 @@
 .claude/
 CLAUDE.md
 
-# Scratch smoke-test pages (see CLAUDE.md > Testing)
+# Scratch pages at the repo root, including the data-failure fixture _tests/run.py generates
+# from index.html on each run. The suites themselves live in _tests/ and are committed.
 _*.html
 
 # Byte-cache from running scripts/fetch_pvgis.py

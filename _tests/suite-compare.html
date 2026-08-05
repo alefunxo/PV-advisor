@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Suite — comparison mode</title>
+</head>
+<body>
+<pre id="out">running…</pre>
+<!-- Desktop width on purpose. The equal-height assertions below are a side-by-side property
+     and stop applying once the columns stack; the mobile suite owns that side. -->
+<iframe id="frame" style="width:1200px;height:900px;border:1px solid #ccc"></iframe>
+
+<script src="harness.js"></script>
+<script>
+// One house, two kits. The scope decision this page exists to protect is that the house is
+// fixed and only the kit differs — so the first thing asserted is that the house controls are
+// not merely disabled but absent.
+const { ok, note, waitFor, sleep, loadFrame, run } = window.Harness;
+const frame = document.getElementById("frame");
+
+let doc, win, cat;
+const $ = (id) => doc.getElementById(id);
+const text = (id) => $(id).textContent.replace(/\s+/g, " ").trim();
+
+function fire(el, type) {
+  el.dispatchEvent(new win.Event(type, { bubbles: true }));
+}
+function setNum(id, value) {
+  const el = $(id);
+  el.value = String(value);
+  fire(el, "input");
+}
+function check(id, on) {
+  const el = $(id);
+  el.checked = on;
+  fire(el, "change");
+}
+
+// Reads a figure out of a column's energy block by its own label, rather than by counting
+// rows — a suite that indexes into the list breaks the moment somebody adds a row, which is
+// the opposite of what it is for.
+function byLabel(blockId, key) {
+  const label = cat[key];
+  const dts = [...$(blockId).querySelectorAll("dt")];
+  const dt = dts.find((d) => d.textContent.trim() === label);
+  if (!dt) return null;
+  let el = dt.nextElementSibling;
+  while (el && el.tagName !== "DD") el = el.nextElementSibling;
+  return el ? el.textContent.trim() : null;
+}
+const rate = (col, key) => parseFloat(String(byLabel(`energy-${col}`, key)).replace(/[^\d.,-]/g, "").replace(",", "."));
+
+const hrefsIn = (sel) =>
+  [...doc.querySelectorAll(`${sel} a`)].map((a) => a.getAttribute("href")).join(", ") || "(no links)";
+const linksToWizard = (sel) =>
+  [...doc.querySelectorAll(`${sel} a`)].some((a) => /(^|\/)index\.html(\?|$)/.test(a.getAttribute("href")));
+
+// The wizard hands this over in the URL. Built here rather than clicked through the wizard —
+// suite-wizard.html already owns the hand-off itself, and this page has to work from any
+// well-formed link, including one a person pasted to a neighbour.
+const SCENARIO = {
+  lang: "en", c: "CH", town: "Zürich", az: "0", tilt: "30", use: "4500", cur: "CHF",
+  rp: "0.28", fit: "0.08", cpk: "1400", bpk: "900", dr: "3", life: "25", blife: "15",
+  rt: "0.9", pr: "0.86", esc: "0", kwp: "6", bat: "0",
+  hp: "0", ev: "0", ac: "0",
+  hpa: "140", hps: "mid", hpt: "45", evkm: "12000", eveff: "18", evs: "dumb",
+  aca: "80", seer: "3",
+};
+const query = Object.entries(SCENARIO)
+  .map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
+
+run(async () => {
+  cat = await (await fetch("../js/i18n/en.json")).json();
+
+  // ------------------------------------------------ opened with no scenario
+  doc = await loadFrame(frame, "../compare.html");
+  win = frame.contentWindow;
+  if (!await waitFor(() => $("noStatePanel") && !$("noStatePanel").hidden,
+                     "the no-scenario panel")) return;
+
+  ok("opened directly, it says it needs a house first", !$("noStatePanel").hidden, "panel hidden");
+  ok("it does not invent a house", $("housePanel").hidden, "the house panel is showing");
+  ok("no columns are drawn without a scenario",
+     doc.querySelectorAll(".compare-col").length === 0,
+     doc.querySelectorAll(".compare-col").length);
+  // i18n.js rewrites internal links as the page is translated, resolving them to a path — so
+  // match on where the link goes, not on the literal attribute the markup was authored with.
+  ok("it sends the visitor to the wizard", linksToWizard("#noStatePanel"),
+     hrefsIn("#noStatePanel"));
+  ok("the dead end is in words, not a catalogue key",
+     !/compare\.noState/.test(text("noStatePanel")), text("noStatePanel"));
+
+  // --------------------------------------------------- opened on a scenario
+  doc = await loadFrame(frame, `../compare.html?${query}`);
+  win = frame.contentWindow;
+  const pageErrors = [];
+  win.addEventListener("error", (e) => pageErrors.push(e.message));
+  if (!await waitFor(() => $("deltaBody") && $("deltaBody").textContent.length > 40,
+                     "the two columns to render")) return;
+
+  ok("it opens on the handed-over house", !$("housePanel").hidden, "the house panel is hidden");
+  ok("the no-scenario panel is not shown", $("noStatePanel").hidden, "shown anyway");
+  ok("both columns are drawn", doc.querySelectorAll(".compare-col").length === 2,
+     doc.querySelectorAll(".compare-col").length);
+
+  // --- the house is fixed, not merely shared -----------------------------------
+  // Absent, not disabled. A disabled control still says "this is yours to change, later".
+  for (const id of ["country", "city", "roofArea", "kwp", "orientation", "tilt", "consumption"]) {
+    ok(`there is no ${id} control on this page`, $(id) === null,
+       `#${id} exists: ${$(id) && $(id).outerHTML.slice(0, 80)}`);
+  }
+  ok("the house is shown as a read-only summary", $("houseSummary").querySelectorAll("dt").length >= 3,
+     $("houseSummary").querySelectorAll("dt").length);
+  ok("the summary names the town", text("houseSummary").includes("Zürich"), text("houseSummary"));
+  ok("the summary names the country", text("houseSummary").includes("Switzerland"),
+     text("houseSummary"));
+  ok("the summary states the electricity use", /4[ ,.]?500/.test(text("houseSummary")),
+     text("houseSummary"));
+  ok("there is a way back to the wizard to change it", linksToWizard("#housePanel"),
+     hrefsIn("#housePanel"));
+
+  // --- costs and tariffs carry over, and stay editable -------------------------
+  const carried = {
+    currency: "CHF", retailPrice: "0.28", feedInTariff: "0.08", capexPerKwp: "1400",
+    batteryCapexPerKwh: "900", discountRate: "3", lifetime: "25", batteryLifetime: "15",
+    roundTrip: "0.9", performanceRatio: "0.86", tariffEscalation: "0",
+  };
+  for (const [id, value] of Object.entries(carried)) {
+    ok(`${id} arrived as the starting value`, $(id).value === value, `${value} → ${$(id).value}`);
+  }
+  ok("the tariffs are editable, because sensitivity-testing a price applies to both columns",
+     [...doc.querySelectorAll("#housePanel input")].every((i) => !i.disabled), "something is disabled");
+
+  // --- both columns start identical --------------------------------------------
+  ok("both columns start on the same panel size", $("kwp-a").value === $("kwp-b").value,
+     `${$("kwp-a").value} vs ${$("kwp-b").value}`);
+  ok("both columns start on the same battery", $("battery-a").value === $("battery-b").value,
+     `${$("battery-a").value} vs ${$("battery-b").value}`);
+  ok("identical kit gives identical results", text("result-a") === text("result-b"),
+     `A: ${text("result-a").slice(0, 70)}\n       B: ${text("result-b").slice(0, 70)}`);
+  ok("identical kit gives identical energy figures", text("energy-a") === text("energy-b"),
+     `A: ${text("energy-a").slice(0, 70)}\n       B: ${text("energy-b").slice(0, 70)}`);
+  // A zero diff is stated in words rather than shown as an unexplained table of zeroes.
+  ok("a zero diff says so in words",
+     text("deltaBody").includes(cat["compare.delta.identical"]), text("deltaBody").slice(0, 120));
+
+  // --- every row is rendered in both columns -----------------------------------
+  const rowCount = (sel) => ["a", "b"].map((c) => $(`${sel}-${c}`).querySelectorAll("dt").length);
+  for (const block of ["result", "energy"]) {
+    const [a, b] = rowCount(block);
+    ok(`the ${block} block has the same rows in both columns`, a === b && a > 0, `${a} vs ${b}`);
+  }
+  ok("no battery means dashes, not missing rows",
+     $("result-a").querySelectorAll(".na").length > 0 &&
+     $("energy-a").querySelectorAll(".na").length > 0,
+     `${$("result-a").querySelectorAll(".na").length} / ${$("energy-a").querySelectorAll(".na").length}`);
+
+  // --- alignment and the shared axis --------------------------------------------
+  // Charts that auto-scale independently are worse than no chart: the taller bars in the
+  // smaller system read as more energy.
+  const chartOf = (col) => win.Chart.getChart($(`chartMonthly-${col}`));
+  ok("both monthly charts rendered", !!chartOf("a") && !!chartOf("b"), "one is missing");
+  ok("the two monthly charts share a y-axis",
+     chartOf("a").scales.y.max === chartOf("b").scales.y.max,
+     `${chartOf("a").scales.y.max} vs ${chartOf("b").scales.y.max}`);
+
+  const top = (sel) => doc.querySelector(sel).getBoundingClientRect().top;
+  for (const [name, sel] of [["chart", ".chart-card"], ["energy", ".col-energy"],
+                             ["summary", ".col-summary"]]) {
+    ok(`the ${name} blocks sit at the same height`,
+       Math.abs(top(`[data-col="a"] ${sel}`) - top(`[data-col="b"] ${sel}`)) < 2,
+       `${top(`[data-col="a"] ${sel}`)} vs ${top(`[data-col="b"] ${sel}`)}`);
+  }
+  ok("the columns are the same width",
+     Math.abs(doc.querySelector('[data-col="a"]').getBoundingClientRect().width -
+              doc.querySelector('[data-col="b"]').getBoundingClientRect().width) < 2,
+     "columns differ in width");
+  // Four cells per row at desktop width; the mobile suite asserts the fourth disappears below
+  // 860 px.
+  ok("the diff table shows a delta cell at desktop width",
+     doc.querySelectorAll(".delta-row .delta-cell").length ===
+     doc.querySelectorAll(".delta-row:not(.head)").length,
+     `${doc.querySelectorAll(".delta-row .delta-cell").length} cells for ` +
+     `${doc.querySelectorAll(".delta-row:not(.head)").length} rows`);
+
+  // --- direction of effect, through the UI --------------------------------------
+  const SS = "compare.energy.selfSufficiency";
+  const SC = "compare.energy.selfConsumption";
+  const baseSufficiency = rate("a", SS);
+  ok("self-sufficiency is readable from the energy block", Number.isFinite(baseSufficiency),
+     byLabel("energy-a", SS));
+
+  // Adding a battery to column B only.
+  let before = text("energy-b");
+  setNum("battery-b", 8);
+  if (!await waitFor(() => text("energy-b") !== before, "column B to recompute with a battery")) return;
+
+  ok("a battery raises self-sufficiency", rate("b", SS) > rate("a", SS),
+     `${rate("a", SS)}% vs ${rate("b", SS)}%`);
+  ok("a battery raises self-consumption", rate("b", SC) > rate("a", SC),
+     `${rate("a", SC)}% vs ${rate("b", SC)}%`);
+  ok("the column with a battery fills in the rows the other dashes",
+     $("energy-b").querySelectorAll(".na").length < $("energy-a").querySelectorAll(".na").length,
+     `${$("energy-a").querySelectorAll(".na").length} vs ${$("energy-b").querySelectorAll(".na").length}`);
+  ok("the two columns still have the same number of rows",
+     $("energy-a").querySelectorAll("dt").length === $("energy-b").querySelectorAll("dt").length,
+     "row counts diverged");
+  ok("the charts still share a y-axis once the columns differ",
+     chartOf("a").scales.y.max === chartOf("b").scales.y.max,
+     `${chartOf("a").scales.y.max} vs ${chartOf("b").scales.y.max}`);
+  ok("the blocks are still aligned once the columns differ",
+     Math.abs(top('[data-col="a"] .col-summary') - top('[data-col="b"] .col-summary')) < 2,
+     "the summary blocks drifted apart");
+  ok("the diff is no longer described as identical",
+     !text("deltaBody").includes(cat["compare.delta.identical"]), text("deltaBody").slice(0, 100));
+
+  // Back to matching kit, then a heat pump on B only.
+  before = text("energy-b");
+  setNum("battery-b", 0);
+  if (!await waitFor(() => text("energy-b") !== before, "column B back to no battery")) return;
+  ok("removing the battery restores the identical case", text("energy-a") === text("energy-b"),
+     "columns did not converge again");
+
+  before = text("energy-b");
+  check("hp-b", true);
+  if (!await waitFor(() => text("energy-b") !== before, "column B to recompute with a heat pump")) return;
+
+  ok("a heat pump lowers self-sufficiency", rate("b", SS) < rate("a", SS),
+     `${rate("a", SS)}% vs ${rate("b", SS)}%`);
+  ok("a heat pump raises self-consumption", rate("b", SC) > rate("a", SC),
+     `${rate("a", SC)}% vs ${rate("b", SC)}%`);
+  ok("a heat pump raises what the household uses",
+     parseFloat(String(byLabel("energy-b", "compare.energy.used")).replace(/[^\d.]/g, "")) >
+     parseFloat(String(byLabel("energy-a", "compare.energy.used")).replace(/[^\d.]/g, "")),
+     `${byLabel("energy-a", "compare.energy.used")} vs ${byLabel("energy-b", "compare.energy.used")}`);
+  ok("the column summary says in words what this column is",
+     /heat pump/i.test(text("summary-b")) && !/heat pump/i.test(text("summary-a")),
+     `A: ${text("summary-a")}\n       B: ${text("summary-b")}`);
+
+  // --- the uncosted notice -------------------------------------------------------
+  ok("the uncosted notice appears when an extra is on in either column", !$("costNotice").hidden,
+     "notice stayed hidden");
+  ok("it names the heat pump", /heat pump/i.test(text("costNotice")), text("costNotice"));
+  ok("it does not name assets that are switched off",
+     !/air conditioner/i.test(text("costNotice")) && !/charger/i.test(text("costNotice")),
+     text("costNotice"));
+
+  before = text("costNotice");
+  check("ac-a", true);
+  if (!await waitFor(() => text("costNotice") !== before, "the notice to pick up the second asset")) return;
+  ok("an extra in the other column is named too",
+     /heat pump/i.test(text("costNotice")) && /air conditioner/i.test(text("costNotice")),
+     text("costNotice"));
+
+  before = text("costNotice");
+  check("hp-b", false);
+  check("ac-a", false);
+  if (!await waitFor(() => $("costNotice").hidden, "the notice to withdraw")) return;
+  ok("the notice withdraws when nothing uncosted is switched on", $("costNotice").hidden,
+     text("costNotice"));
+
+  // --- the whole page, finally ---------------------------------------------------
+  ok("nothing on the page reads NaN, undefined or [object Object]",
+     !/NaN|undefined|\[object/.test(doc.body.textContent),
+     (doc.body.textContent.match(/.{0,40}(NaN|undefined|\[object).{0,40}/) || [""])[0]);
+  ok("no raw catalogue key reached the page",
+     !/\b(compare|results|assump|unit|chart|asset)\.[a-zA-Z.]+/.test(doc.body.textContent),
+     (doc.body.textContent.match(/\b(compare|results|assump|unit|chart|asset)\.[a-zA-Z.]+/) || [""])[0]);
+  ok("the template rendered twice without producing a duplicate id",
+     (() => {
+       const ids = [...doc.querySelectorAll("[id]")].map((el) => el.id);
+       return new Set(ids).size === ids.length;
+     })(),
+     (() => {
+       const seen = new Set(), dupes = new Set();
+       doc.querySelectorAll("[id]").forEach((el) => (seen.has(el.id) ? dupes.add(el.id) : seen.add(el.id)));
+       return [...dupes].join(", ");
+     })());
+  ok("comparison mode is still absent from its own header nav",
+     ![...doc.querySelectorAll(".site-nav a")].some((a) => a.getAttribute("href").includes("compare.html")),
+     [...doc.querySelectorAll(".site-nav a")].map((a) => a.getAttribute("href")).join(", "));
+  ok("no page error was raised along the way", pageErrors.length === 0, pageErrors.join(" | "));
+
+  note(`baseline self-sufficiency ${baseSufficiency}% on 6 kWp in Zürich with no battery`);
+});
+</script>
+</body>
+</html>

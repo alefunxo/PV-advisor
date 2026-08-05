@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Scratch suite — input bounds and data-load failure</title>
+</head>
+<body>
+<pre id="out">running…</pre>
+<iframe id="frame" style="width:1200px;height:900px;border:1px solid #ccc"></iframe>
+<script>
+const results = [];
+const ok = (name, cond, detail) => results.push((cond ? "PASS " : "FAIL ") + name + (cond ? "" : "  << " + detail));
+
+const frame = document.getElementById("frame");
+
+function load(url) {
+  return new Promise((resolve) => {
+    frame.addEventListener("load", function once() {
+      frame.removeEventListener("load", once);
+      resolve(frame.contentDocument);
+    });
+    frame.src = url;
+  });
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function waitFor(doc, fn, label) {
+  for (let i = 0; i < 200; i++) {
+    try { if (fn(doc)) return true; } catch (e) {}
+    await sleep(50);
+  }
+  results.push("FAIL timed out waiting for " + label);
+  return false;
+}
+
+function setNum(doc, id, value) {
+  const el = doc.getElementById(id);
+  el.value = String(value);
+  el.dispatchEvent(new el.ownerDocument.defaultView.Event("input", { bubbles: true }));
+  el.dispatchEvent(new el.ownerDocument.defaultView.Event("change", { bubbles: true }));
+}
+
+const blocked = (doc) => !doc.getElementById("formError").hidden;
+
+// ---------------------------------------------------------------- bounds
+async function testBounds() {
+  // Pinned to English: this machine's Chrome negotiates fr, and the field name in the error
+  // is read out of the page, so an unpinned run asserts against a French label.
+  const doc = await load("../index.html?lang=en");
+  if (!await waitFor(doc, (d) => d.getElementById("country").options.length > 0, "country list")) return;
+
+  // Every number input carries both bounds now.
+  const inputs = [...doc.querySelectorAll('input[type=number]')];
+  const noMax = inputs.filter((i) => i.max === "").map((i) => i.id);
+  ok("every number input has a max", noMax.length === 0, "missing on " + noMax.join(", "));
+  const noMin = inputs.filter((i) => i.min === "").map((i) => i.id);
+  ok("every number input has a min", noMin.length === 0, "missing on " + noMin.join(", "));
+
+  // Each default must sit inside its own bounds — otherwise the page opens invalid.
+  const outside = inputs.filter((i) => {
+    const v = Number(i.value);
+    return Number.isFinite(v) && (v < Number(i.min) || v > Number(i.max));
+  }).map((i) => i.id + "=" + i.value);
+  ok("every default is inside its own bounds", outside.length === 0, outside.join(", "));
+
+  // The typo this exists to catch: an extra zero on the annual consumption.
+  setNum(doc, "consumption", 45000);
+  doc.getElementById("nextBtn").click();
+  ok("step 1 rejects 45 000 kWh", blocked(doc), "error panel stayed hidden");
+  ok("rejected field is marked aria-invalid",
+     doc.getElementById("consumption").getAttribute("aria-invalid") === "true", "not marked");
+  ok("the error names the field",
+     /electricity/i.test(doc.getElementById("formError").textContent),
+     doc.getElementById("formError").textContent);
+
+  // ... and the same value one order of magnitude down is fine.
+  setNum(doc, "consumption", 4500);
+  doc.getElementById("nextBtn").click();
+  ok("step 1 accepts 4 500 kWh", doc.querySelector('.step[data-step="2"]').className.indexOf("hidden") < 0,
+     "did not advance");
+
+  // Tariff entered in cents rather than units.
+  setNum(doc, "retailPrice", 28);
+  doc.getElementById("nextBtn").click();
+  ok("step 2 rejects a tariff of 28", blocked(doc), "error panel stayed hidden");
+  setNum(doc, "retailPrice", 0.28);
+
+  // Capex with an extra digit.
+  setNum(doc, "capexPerKwp", 14000);
+  doc.getElementById("nextBtn").click();
+  ok("step 2 rejects 14 000 per kWp", blocked(doc), "error panel stayed hidden");
+  setNum(doc, "capexPerKwp", 1400);
+
+  // Battery cost with an extra digit.
+  setNum(doc, "batteryCapexPerKwh", 9000);
+  doc.getElementById("nextBtn").click();
+  ok("step 2 rejects 9 000 per kWh of battery", blocked(doc), "error panel stayed hidden");
+  setNum(doc, "batteryCapexPerKwh", 900);
+
+  // A hidden field's bounds must still not block: switch sizing to kWp and leave roofArea
+  // holding something out of range.
+  setNum(doc, "roofArea", 999999);
+  doc.getElementById("nextBtn").click();
+  ok("valid step 2 advances to step 3",
+     doc.querySelector('.step[data-step="3"]').className.indexOf("hidden") < 0, "did not advance");
+
+  // Extras: an out-of-range field inside a switched-off panel must not block.
+  setNum(doc, "hpArea", 999999);
+  doc.getElementById("nextBtn").click();
+  ok("a switched-off asset's bad field does not block",
+     doc.querySelector('.step[data-step="4"]').className.indexOf("hidden") < 0,
+     "blocked by a hidden field: " + doc.getElementById("formError").textContent);
+}
+
+// ------------------------------------------------------- data-load failure
+async function testDataError() {
+  const doc = await load("../_dataerror.html");
+  const shown = await waitFor(doc, (d) => !d.getElementById("dataErrorPanel").hidden, "data error panel");
+  if (!shown) return;
+  ok("the wizard is hidden when data fails", doc.getElementById("wizard").hidden, "still visible");
+  ok("the stepper is hidden when data fails", doc.getElementById("stepper").hidden, "still visible");
+  const h2 = doc.querySelector("#dataErrorPanel h2").textContent.trim();
+  ok("the panel is in words, not a catalogue key", h2.indexOf("dataError") < 0 && h2.length > 5, h2);
+  ok("the panel says what happened", /did not load/i.test(h2), h2);
+  ok("a retry control is offered", !!doc.getElementById("dataErrorRetry"), "no retry button");
+  ok("nothing on the page reads NaN or undefined",
+     !/\b(NaN|undefined)\b/.test(doc.body.textContent), "found one");
+}
+
+// -------------------------------------------------- catalogue still applies
+async function testCatalogueFallback() {
+  const doc = await load("../index.html?lang=de");
+  if (!await waitFor(doc, (d) => d.getElementById("country").options.length > 0, "country list (de)")) return;
+  const h2 = doc.querySelector('#dataErrorPanel h2').textContent.trim();
+  ok("the error panel is translated too", h2 === "Etwas wurde nicht geladen", h2);
+}
+
+(async () => {
+  try {
+    await testBounds();
+    await testDataError();
+    await testCatalogueFallback();
+  } catch (e) {
+    results.push("FAIL threw: " + (e && e.stack || e));
+  }
+  const fails = results.filter((r) => r.startsWith("FAIL")).length;
+  document.getElementById("out").textContent =
+    results.join("\n") + "\n\n" + (fails ? fails + " FAILURES" : "ALL PASS (" + results.length + ")");
+})();
+</script>
+</body>
+</html>

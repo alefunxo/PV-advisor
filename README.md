@@ -26,6 +26,17 @@ python -m http.server 8123
 Then browse to <http://localhost:8123>. Opening `index.html` directly from the filesystem will
 not work — the data files are loaded with `fetch`, which needs an HTTP origin.
 
+## Tests
+
+```
+python _tests/run.py
+```
+
+Eight browser suites — the calc engine, the wizard, comparison mode, the methodology page, all
+five languages, the input bounds and failure handling, the mobile layout and accessibility —
+run against the real pages in headless Chrome. They need Python 3 and Chrome and nothing else,
+and they run on every push via `.github/workflows/suites.yml`. See [`_tests/README.md`](_tests/README.md).
+
 ## Coverage
 
 EU-27 plus the UK, Switzerland and Norway: 1 210 towns and cities, each with its own measured
@@ -53,6 +64,8 @@ js/data/cities.json           per-city yield, seasonal shape, temperatures (offl
 js/data/regional-yield.json   tilt/azimuth correction factors by latitude band
 js/data/load-profiles.js      synthetic household + heat pump / EV / AC load profiles
 scripts/fetch_pvgis.py        regenerates both data files from PVGIS, offline
+_tests/run.py                 serves the site and drives the suites in headless Chrome
+_tests/suite-*.html           one suite each; see _tests/README.md
 ```
 
 ## Status

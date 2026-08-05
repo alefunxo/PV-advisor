@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Suite — the wizard</title>
+</head>
+<body>
+<pre id="out">running…</pre>
+<!-- Wide enough that the results grid is in its desktop layout; the mobile suite owns the
+     narrow widths. -->
+<iframe id="frame" style="width:1200px;height:900px;border:1px solid #ccc"></iframe>
+
+<script src="harness.js"></script>
+<script>
+// The real index.html in an iframe, driven the way a person drives it. Everything here is
+// behaviour a user could notice: what the form accepts, what the buttons do, what survives
+// going Back, and whether the results page recomputes when an extra is switched on.
+const { ok, note, waitFor, sleep, loadFrame, run } = window.Harness;
+const frame = document.getElementById("frame");
+
+let doc, win;
+
+const $ = (id) => doc.getElementById(id);
+const stepShown = (n) => !doc.querySelector(`.step[data-step="${n}"]`).classList.contains("hidden");
+const blocked = () => !$("formError").hidden;
+const resultsText = () => doc.querySelector('.step[data-step="4"]').textContent;
+
+function fire(el, type) {
+  el.dispatchEvent(new win.Event(type, { bubbles: true }));
+}
+function setNum(id, value) {
+  const el = $(id);
+  el.value = String(value);
+  fire(el, "input");
+  fire(el, "change");
+}
+function setSelect(id, value) {
+  const el = $(id);
+  el.value = String(value);
+  fire(el, "change");
+}
+function check(id, on) {
+  const el = $(id);
+  el.checked = on;
+  fire(el, "change");
+}
+const next = () => $("nextBtn").click();
+const back = () => $("backBtn").click();
+
+run(async () => {
+  // Pinned to English throughout: the validation error reads the field's label out of the
+  // page, so an unpinned run would assert against whatever language Chrome negotiated.
+  doc = await loadFrame(frame, "../index.html?lang=en");
+  win = frame.contentWindow;
+  if (!await waitFor(() => $("country") && $("country").options.length > 0, "the country list")) return;
+
+  const pageErrors = [];
+  win.addEventListener("error", (e) => pageErrors.push(e.message));
+
+  // ------------------------------------------------------------- initial state
+  ok("the country list is populated", $("country").options.length > 20, $("country").options.length);
+  ok("the city list is populated", $("city").options.length > 0, $("city").options.length);
+  ok("it opens on Switzerland", $("country").value === "CH", $("country").value);
+  ok("the city names are GeoNames endonyms",
+     [...$("city").options].some((o) => o.textContent === "Zürich"),
+     [...$("city").options].slice(0, 3).map((o) => o.textContent).join(", "));
+  ok("step 1 is showing and nothing else is",
+     stepShown(1) && !stepShown(2) && !stepShown(3) && !stepShown(4), "wrong step visible");
+  ok("there is nowhere to go back to yet", $("backBtn").hidden, "Back is offered on step 1");
+  ok("Start again is not offered before the results", $("restartBtn").hidden, "shown too early");
+
+  // ----------------------------------------------------------------- sizing
+  ok("the roof area is converted to a system size",
+     $("sizeDerived").textContent === "That is roughly a 4.8 kWp system.",
+     $("sizeDerived").textContent);
+  ok("the area field is the one showing",
+     !doc.querySelector('[data-size-mode="area"]').classList.contains("hidden") &&
+     doc.querySelector('[data-size-mode="kwp"]').classList.contains("hidden"), "wrong mode shown");
+
+  const kwpRadio = doc.querySelector('input[name="sizeMode"][value="kwp"]');
+  kwpRadio.checked = true;
+  fire(kwpRadio, "input");
+  ok("choosing kWp swaps which field is shown",
+     doc.querySelector('[data-size-mode="area"]').classList.contains("hidden") &&
+     !doc.querySelector('[data-size-mode="kwp"]').classList.contains("hidden"), "did not swap");
+  setNum("kwp", 8);
+  ok("the system size is converted back to a roof area",
+     /50/.test($("sizeDerived").textContent), $("sizeDerived").textContent);
+
+  // Back to sizing by area for the rest of the run.
+  const areaRadio = doc.querySelector('input[name="sizeMode"][value="area"]');
+  areaRadio.checked = true;
+  fire(areaRadio, "input");
+  setNum("roofArea", 30);
+
+  // ---------------------------------------------------------------- currency
+  ok("the currency followed the opening country", $("currency").value === "CHF", $("currency").value);
+  setSelect("country", "DE");
+  ok("a country with no entry falls back to the euro", $("currency").value === "EUR",
+     $("currency").value);
+  setSelect("country", "GB");
+  ok("the currency follows the country", $("currency").value === "GBP", $("currency").value);
+  // Once the user has touched it, it must stop following.
+  setSelect("currency", "EUR");
+  setSelect("country", "NO");
+  ok("a user-chosen currency is never overwritten", $("currency").value === "EUR",
+     $("currency").value);
+
+  // Settle on Switzerland for the run, and put the currency back under the tool's control by
+  // reloading — currencyTouched is deliberately sticky for the life of the page.
+  doc = await loadFrame(frame, "../index.html?lang=en");
+  win = frame.contentWindow;
+  if (!await waitFor(() => $("country") && $("country").options.length > 0, "the country list again")) return;
+  win.addEventListener("error", (e) => pageErrors.push(e.message));
+
+  // --------------------------------------------------------------- validation
+  setNum("consumption", 45000);
+  next();
+  ok("an out-of-range consumption blocks the step", blocked(), "the error stayed hidden");
+  ok("still on step 1", stepShown(1), "advanced anyway");
+  ok("the bad field is flagged for assistive tech",
+     $("consumption").getAttribute("aria-invalid") === "true", "not flagged");
+  ok("the bad field takes the caret", doc.activeElement === $("consumption"),
+     doc.activeElement && doc.activeElement.id);
+  ok("the error names the field in the page's own words",
+     /electricity/i.test($("formError").textContent), $("formError").textContent);
+
+  setNum("consumption", 4500);
+  next();
+  ok("the corrected value is accepted", stepShown(2), "did not advance");
+  ok("the flag clears once the field is fixed",
+     $("consumption").getAttribute("aria-invalid") === null, "still flagged");
+  ok("the error panel is hidden again", !blocked(), $("formError").textContent);
+  ok("Back is offered once past step 1", !$("backBtn").hidden, "still hidden");
+
+  // A field on a *later* step must never block an earlier one.
+  setNum("acSeer", 999);
+  back();
+  next();
+  ok("a bad field on a later step does not block an earlier one", stepShown(2),
+     $("formError").textContent);
+  setNum("acSeer", 3);
+
+  // ----------------------------------------------------------- state retention
+  setNum("retailPrice", 0.31);
+  setNum("batteryKwh", 8);
+  back();
+  ok("Back returns to step 1", stepShown(1), "wrong step");
+  ok("step 1 kept what was typed", $("consumption").value === "4500", $("consumption").value);
+  next();
+  ok("step 2 kept what was typed", $("retailPrice").value === "0.31", $("retailPrice").value);
+
+  // The label says "See my results" on the last input step, not "Continue".
+  next();
+  ok("step 3 is the extras step", stepShown(3), "wrong step");
+  ok("the last step relabels the button", $("nextBtn").textContent === "See my results",
+     $("nextBtn").textContent);
+  ok("a switched-off asset's details are hidden",
+     doc.querySelector('details.advanced[data-asset="hp"]').hidden, "shown while off");
+  check("hpEnabled", true);
+  ok("switching an asset on reveals its details",
+     !doc.querySelector('details.advanced[data-asset="hp"]').hidden, "still hidden");
+  check("hpEnabled", false);
+
+  // -------------------------------------------------------------- the results
+  next();
+  ok("the results step is reached", stepShown(4), "did not reach the results");
+  if (!await waitFor(() => $("results-body").textContent.length > 50, "the results to render")) return;
+
+  ok("Continue is withdrawn on the results step", $("nextBtn").hidden, "still offered");
+  ok("Start again is offered on the results step", !$("restartBtn").hidden, "not offered");
+  ok("the results step widens the page",
+     doc.body.classList.contains("results-wide"), doc.body.className);
+  ok("there is a headline figure", !!doc.querySelector("#results-body .headline"),
+     "no .headline rendered");
+  ok("nothing in the results reads NaN, undefined or [object Object]",
+     !/NaN|undefined|\[object/.test(resultsText()),
+     (resultsText().match(/.{0,40}(NaN|undefined|\[object).{0,40}/) || [""])[0]);
+  ok("no raw catalogue key reached the page",
+     !/\b(results|assump|unit|chart|nav|step\d)\.[a-zA-Z.]+/.test(resultsText()),
+     (resultsText().match(/\b(results|assump|unit|chart|nav|step\d)\.[a-zA-Z.]+/) || [""])[0]);
+
+  // ------------------------------------------------------------------- charts
+  const CANVASES = ["chartMonthly", "chartSplit", "chartCash", "chartSummer", "chartWinter"];
+  for (const id of CANVASES) {
+    const chart = win.Chart.getChart($(id));
+    ok(`${id} rendered`, !!chart, "no Chart instance attached to the canvas");
+    if (!chart) continue;
+    ok(`${id} has at least one series`, chart.data.datasets.length > 0, chart.data.datasets.length);
+    // A doughnut carries its names in data.labels, one per slice, rather than on the dataset.
+    const named = chart.config.type === "doughnut"
+      ? chart.data.labels.length === chart.data.datasets[0].data.length &&
+        chart.data.labels.every((l) => !!l)
+      : chart.data.datasets.every((d) => !!d.label);
+    ok(`${id} names everything it draws`, named,
+       chart.config.type === "doughnut"
+         ? chart.data.labels.join(", ")
+         : chart.data.datasets.map((d) => d.label).join(", "));
+  }
+  // Colours must arrive resolved. A dataset still holding "var(--c-solar)" renders as
+  // transparent, which is exactly the kind of thing a screenshot hides and a token check does
+  // not. The palette is validated for colour-vision separation in js/charts.js; this only
+  // asserts the tokens made it out of CSS.
+  const cssVar = (name) =>
+    win.getComputedStyle(doc.documentElement).getPropertyValue(name).trim();
+  const tokens = ["--c-solar", "--c-battery", "--c-grid", "--c-exported"].map(cssVar);
+  ok("the palette tokens are defined in CSS", tokens.every((v) => /^(#|rgb)/.test(v)),
+     tokens.join(" "));
+  const colours = [];
+  CANVASES.forEach((id) => {
+    const chart = win.Chart.getChart($(id));
+    if (!chart) return;
+    chart.data.datasets.forEach((d) => {
+      const c = d.backgroundColor || d.borderColor;
+      if (typeof c === "string") colours.push(c);
+      else if (Array.isArray(c)) c.forEach((v) => colours.push(v));
+    });
+  });
+  ok("every series colour is resolved, not left as a var()",
+     colours.length > 0 && colours.every((c) => !/var\(/.test(c)),
+     colours.filter((c) => /var\(/.test(c)).join(", ") || `${colours.length} colours`);
+  ok("the series colours come from the CSS tokens",
+     tokens.every((tok) => colours.some((c) => c.toLowerCase().indexOf(tok.toLowerCase()) >= 0)),
+     `tokens ${tokens.join(" ")} — colours ${[...new Set(colours)].slice(0, 8).join(" ")}`);
+  ok("the month labels are real months", win.Chart.getChart($("chartMonthly")).data.labels[0] === "Jan",
+     win.Chart.getChart($("chartMonthly")).data.labels.join(","));
+
+  // ---------------------------------------------------- the extras toggles
+  // These re-run the model against the *same* PV and battery sizes, so what changes is the
+  // extra's doing and not a resized system.
+  // main.js runs inside a DOMContentLoaded closure, so `model` is not reachable from here —
+  // which is the right constraint for this suite anyway. Everything below is read off the
+  // rendered page, the way a user would see it. The two progress bars in the results body are
+  // the unrounded rates: self-consumption first, self-sufficiency second.
+  const bars = () => [...doc.querySelectorAll("#results-body .bar span")].map((s) => s.style.width);
+  const selfSufficiency = () => parseFloat(bars()[1]);
+  const summary = () => $("scenarioSummary").textContent;
+  // The two headings that name the system size. Neither may move when an extra is toggled.
+  const systemHeadings = () =>
+    [...doc.querySelectorAll("#results-body h3")].map((h) => h.textContent.trim()).join(" | ");
+
+  const headingsBefore = systemHeadings();
+  const baselineSummary = summary();
+  const baselineSufficiency = selfSufficiency();
+  const baselineBars = bars().join(" ");
+  ok("the results body writes both rates out as bars", bars().length === 2, bars().join(" "));
+
+  check("resultHp", true);
+  await sleep(200);
+  ok("the toggle recomputes the page", summary() !== baselineSummary,
+     `"${baselineSummary}" did not change`);
+  ok("the live region names the heat pump", /heat pump/i.test(summary()), summary());
+  ok("a heat pump lowers self-sufficiency through the UI too",
+     selfSufficiency() < baselineSufficiency,
+     `${baselineSufficiency} → ${selfSufficiency()}`);
+  ok("the system was not resized behind the toggle", systemHeadings() === headingsBefore,
+     `${headingsBefore}  →  ${systemHeadings()}`);
+  ok("the battery heading needs no article in front of a digit",
+     /Adding the 8 kWh battery/.test(systemHeadings()), systemHeadings());
+  ok("the toggle mirrors back into step 3", $("hpEnabled").checked,
+     "step 3 still says the heat pump is off");
+  ok("the uncosted notice appears with the asset switched on", !$("costNotice").hidden,
+     "notice stayed hidden");
+  ok("the uncosted notice names the heat pump", /heat pump/i.test($("costNotice").textContent),
+     $("costNotice").textContent);
+  ok("the per-asset breakdown gained a row",
+     $("results-extras").textContent.length > 0, "results-extras is empty");
+
+  check("resultAc", true);
+  await sleep(200);
+  // The notice names the *things you buy* ("air conditioner"), not the asset toggles
+  // ("Air conditioning") — a reader is being told what is missing from the money figure.
+  ok("a second asset is named in the notice too",
+     /heat pump/i.test($("costNotice").textContent) &&
+     /air conditioner/i.test($("costNotice").textContent), $("costNotice").textContent);
+
+  check("resultHp", false);
+  check("resultAc", false);
+  await sleep(200);
+  ok("switching everything off hides the notice again", $("costNotice").hidden,
+     $("costNotice").textContent);
+  ok("and clears step 3 with it", !$("hpEnabled").checked && !$("acEnabled").checked,
+     "step 3 still ticked");
+  ok("every figure returns to where it started once the extras are off",
+     bars().join(" ") === baselineBars, `${baselineBars} vs ${bars().join(" ")}`);
+
+  // Back from the results must not contradict what was just on screen.
+  back();
+  ok("Back from the results lands on step 3", stepShown(3), "wrong step");
+  next();
+  if (!await waitFor(() => $("results-body").textContent.length > 50, "the results again")) return;
+
+  // --------------------------------------------------- hand-off to comparison
+  // The scenario travels in the URL. Every value the wizard sends has to arrive.
+  check("resultEv", true);
+  await sleep(200);
+
+  const expected = {
+    town: [...$("city").selectedOptions][0].textContent,
+    consumption: Number($("consumption").value),
+    retailPrice: Number($("retailPrice").value),
+    feedInTariff: Number($("feedInTariff").value),
+    capexPerKwp: Number($("capexPerKwp").value),
+    batteryCapexPerKwh: Number($("batteryCapexPerKwh").value),
+    batteryKwh: Number($("batteryKwh").value),
+    lifetime: Number($("lifetime").value),
+    currency: $("currency").value,
+    // Sized by roof area here, so the wizard sends the kWp it worked from: modules are roughly
+    // 200 W/m² and installers rarely fill every square metre.
+    kwp: Number($("roofArea").value) * 0.2 * 0.8,
+    evKm: Number($("evKm").value),
+  };
+
+  const navigated = new Promise((r) => frame.addEventListener("load", r, { once: true }));
+  $("compareBtn").click();
+  await navigated;
+  doc = frame.contentDocument;
+  win = frame.contentWindow;
+  if (!await waitFor(() => $("deltaBody") && $("deltaBody").textContent.length > 40,
+                     "comparison mode to render")) return;
+
+  ok("comparison mode opened on the handed-over house", !$("housePanel").hidden,
+     "the house panel is hidden");
+  ok("it did not fall back to the no-scenario panel", $("noStatePanel").hidden,
+     "it says there is no scenario");
+  ok("the town travelled", $("houseSummary").textContent.includes(expected.town),
+     `${expected.town} not in "${$("houseSummary").textContent}"`);
+  ok("the consumption travelled",
+     $("houseSummary").textContent.replace(/ | |,/g, "").includes(String(expected.consumption)),
+     $("houseSummary").textContent);
+  ok("the currency travelled", $("currency").value === expected.currency, $("currency").value);
+
+  const arrived = {
+    retailPrice: Number($("retailPrice").value),
+    feedInTariff: Number($("feedInTariff").value),
+    capexPerKwp: Number($("capexPerKwp").value),
+    batteryCapexPerKwh: Number($("batteryCapexPerKwh").value),
+    lifetime: Number($("lifetime").value),
+    batteryKwh: Number($("battery-a").value),
+    kwp: Number($("kwp-a").value),
+    evKm: Number($("evKm-a").value),
+  };
+  for (const key of Object.keys(arrived)) {
+    ok(`the ${key} travelled`, Math.abs(arrived[key] - expected[key]) < 0.011,
+       `${expected[key]} → ${arrived[key]}`);
+  }
+  ok("both columns start from the same kit",
+     $("kwp-a").value === $("kwp-b").value && $("battery-a").value === $("battery-b").value,
+     `${$("kwp-a").value}/${$("battery-a").value} vs ${$("kwp-b").value}/${$("battery-b").value}`);
+  ok("the extras showing on the results page travelled",
+     $("ev-a").checked && $("ev-b").checked, "the electric car did not arrive ticked");
+  ok("the extras that were off stayed off", !$("hp-a").checked && !$("ac-a").checked,
+     "something arrived ticked that was not on");
+
+  note(`handed over ${expected.kwp} kWp, ${expected.batteryKwh} kWh battery, ` +
+       `${expected.consumption} kWh/yr in ${expected.town}`);
+
+  ok("no page raised an error along the way", pageErrors.length === 0, pageErrors.join(" | "));
+});
+</script>
+</body>
+</html>

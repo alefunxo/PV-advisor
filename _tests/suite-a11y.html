@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Scratch suite — accessibility</title>
+</head>
+<body>
+<pre id="out">running…</pre>
+<!--
+  Colour-vision separation is asserted elsewhere (js/charts.js and the wizard suite), which is
+  the hard part and the part that was measured rather than eyeballed. This suite covers the
+  three things that were left unverified: keyboard order, focus management across wizard
+  steps, and how the results dashboard reads to a screen reader.
+
+  What it cannot do is replace an actual screen reader. It checks that the machinery a reader
+  depends on is present and correct — accessible names, focus that follows the view, live
+  regions on the things that change without navigation — not that the resulting speech is
+  pleasant to listen to.
+-->
+<iframe id="frame" style="width:1200px;height:900px;border:1px solid #ccc"></iframe>
+<script>
+const results = [];
+const ok = (name, cond, detail) => results.push((cond ? "PASS " : "FAIL ") + name + (cond ? "" : "  << " + detail));
+
+const frame = document.getElementById("frame");
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function load(url) {
+  return new Promise((resolve) => {
+    frame.addEventListener("load", function once() {
+      frame.removeEventListener("load", once);
+      resolve(frame.contentDocument);
+    });
+    frame.src = url;
+  });
+}
+
+async function waitFor(doc, fn, label) {
+  for (let i = 0; i < 200; i++) {
+    try { if (fn(doc)) return true; } catch (e) {}
+    await sleep(50);
+  }
+  results.push("FAIL timed out waiting for " + label);
+  return false;
+}
+
+const stepShown = (d, n) => !d.querySelector(`.step[data-step="${n}"]`).classList.contains("hidden");
+
+// What the browser will actually stop on when tabbing: focusable, and not inside anything
+// display:none or [hidden]. The hidden check is the point — a wizard hides three of its four
+// steps, and their inputs must not be tab stops.
+const FOCUSABLE = 'a[href], button, input, select, textarea, [tabindex]';
+function tabbable(doc) {
+  return [...doc.querySelectorAll(FOCUSABLE)].filter((el) => {
+    if (el.disabled) return false;
+    if (Number(el.getAttribute("tabindex")) < 0) return false;
+    if (el.closest(".hidden") || el.closest("[hidden]")) return false;
+    const cs = frame.contentWindow.getComputedStyle(el);
+    return cs.display !== "none" && cs.visibility !== "hidden";
+  });
+}
+
+// The accessible name, near enough for these controls: a label, aria-label, aria-labelledby,
+// or the element's own text.
+function accName(doc, el) {
+  if (el.getAttribute("aria-label")) return el.getAttribute("aria-label").trim();
+  const by = el.getAttribute("aria-labelledby");
+  if (by) {
+    const t = by.split(/\s+/).map((id) => doc.getElementById(id)).filter(Boolean)
+      .map((n) => n.textContent.trim()).join(" ");
+    if (t) return t;
+  }
+  if (el.id) {
+    const lab = doc.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+    if (lab && lab.textContent.trim()) return lab.textContent.trim();
+  }
+  const wrapping = el.closest("label");
+  if (wrapping && wrapping.textContent.trim()) return wrapping.textContent.trim();
+  if (el.title) return el.title.trim();
+  return el.textContent.trim();
+}
+
+// ------------------------------------------------------ static structure
+function testStructure(doc, page) {
+  ok(`${page}: exactly one h1`, doc.querySelectorAll("h1").length === 1,
+     doc.querySelectorAll("h1").length + " found");
+  ok(`${page}: the document declares a language`, !!doc.documentElement.lang,
+     "no lang attribute");
+
+  // Headings that skip a level leave a reader guessing what the missing one contained.
+  const levels = [...doc.querySelectorAll("h1,h2,h3,h4,h5,h6")]
+    .filter((h) => !h.closest(".hidden") && !h.closest("[hidden]"))
+    .map((h) => Number(h.tagName[1]));
+  const skips = [];
+  levels.forEach((lv, i) => { if (i && lv > levels[i - 1] + 1) skips.push(`h${levels[i - 1]} -> h${lv}`); });
+  ok(`${page}: no heading level is skipped`, skips.length === 0, skips.join(", "));
+
+  // A positive tabindex overrides DOM order for the whole page, not just itself.
+  const positive = [...doc.querySelectorAll("[tabindex]")]
+    .filter((el) => Number(el.getAttribute("tabindex")) > 0)
+    .map((el) => el.tagName.toLowerCase() + "#" + el.id);
+  ok(`${page}: no positive tabindex anywhere`, positive.length === 0, positive.join(", "));
+
+  // Every control the keyboard can reach has to say what it is.
+  const nameless = tabbable(doc).filter((el) => !accName(doc, el))
+    .map((el) => el.tagName.toLowerCase() + (el.id ? "#" + el.id : ""));
+  ok(`${page}: every reachable control has an accessible name`, nameless.length === 0, nameless.join(", "));
+
+  // Form controls specifically: a placeholder is not a label.
+  const unlabelled = [...doc.querySelectorAll("input, select, textarea")]
+    .filter((el) => el.type !== "hidden")
+    .filter((el) => !accName(doc, el))
+    .map((el) => el.id || el.name || el.type);
+  ok(`${page}: every form control is labelled`, unlabelled.length === 0, unlabelled.join(", "));
+
+  // Canvases have no accessible content. Either they are named, or they are hidden because
+  // the same numbers are written out as text nearby — but never left as a silent unknown.
+  const bareCanvas = [...doc.querySelectorAll("canvas")]
+    .filter((c) => c.getAttribute("aria-hidden") !== "true" && !accName(doc, c) && !c.getAttribute("role"))
+    .map((c) => c.id);
+  ok(`${page}: no canvas is left unnamed and unhidden`, bareCanvas.length === 0, bareCanvas.join(", "));
+
+  // Tab order follows the document, which is only true while nothing overrides it.
+  const order = tabbable(doc);
+  const docOrder = [...order].sort((a, b) =>
+    (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1);
+  ok(`${page}: tab order follows document order`,
+     order.every((el, i) => el === docOrder[i]), "reordered by tabindex");
+}
+
+// ------------------------------------------------- wizard focus management
+async function testWizardFocus() {
+  const doc = await load("../index.html?lang=en");
+  if (!await waitFor(doc, (d) => d.getElementById("country").options.length > 0, "country list")) return;
+  const win = frame.contentWindow;
+
+  testStructure(doc, "../index.html");
+
+  // Nothing on a hidden step may be a tab stop, or a keyboard user tabs off the visible form
+  // into three steps' worth of invisible fields.
+  const leaked = tabbable(doc).filter((el) => {
+    const s = el.closest(".step");
+    return s && Number(s.dataset.step) !== 1;
+  }).map((el) => el.id);
+  ok("only the current step's controls are tabbable", leaked.length === 0, leaked.join(", "));
+
+  ok("focus is not stolen on load", doc.activeElement === doc.body ||
+     doc.activeElement === doc.documentElement, "focus went to " + (doc.activeElement && doc.activeElement.id));
+
+  // Advancing must take focus with it. Without this the old focus dies on a display:none
+  // element and the next Tab restarts at the top of the page.
+  doc.getElementById("nextBtn").click();
+  if (!await waitFor(doc, (d) => stepShown(d, 2), "step 2")) return;
+  const h2 = doc.querySelector('.step[data-step="2"] h2');
+  ok("focus moves to the new step's heading", doc.activeElement === h2,
+     "focus is on " + (doc.activeElement && (doc.activeElement.id || doc.activeElement.tagName)));
+  ok("the heading is focusable but not a tab stop", h2.getAttribute("tabindex") === "-1",
+     h2.getAttribute("tabindex"));
+
+  // ...and going back, for the same reason.
+  doc.getElementById("backBtn").click();
+  if (!await waitFor(doc, (d) => stepShown(d, 1), "step 1")) return;
+  ok("focus follows Back as well",
+     doc.activeElement === doc.querySelector('.step[data-step="1"] h2'),
+     "focus is on " + (doc.activeElement && (doc.activeElement.id || doc.activeElement.tagName)));
+
+  // A rejected step must put the caret on the field to fix, not just name it in prose.
+  const consumption = doc.getElementById("consumption");
+  consumption.value = "45000";
+  consumption.dispatchEvent(new win.Event("input", { bubbles: true }));
+  doc.getElementById("nextBtn").click();
+  await sleep(80);
+  ok("a rejected field receives focus", doc.activeElement === consumption,
+     "focus is on " + (doc.activeElement && doc.activeElement.id));
+  ok("the rejected field is marked invalid", consumption.getAttribute("aria-invalid") === "true", "not marked");
+  const err = doc.getElementById("formError");
+  ok("the error message announces itself", err.getAttribute("role") === "alert", err.getAttribute("role"));
+  ok("the error message has text", err.textContent.trim().length > 0, "empty");
+
+  // Fixing it clears the invalid flag rather than leaving a reader told it is still wrong.
+  consumption.value = "4500";
+  consumption.dispatchEvent(new win.Event("input", { bubbles: true }));
+  doc.getElementById("nextBtn").click();
+  if (!await waitFor(doc, (d) => stepShown(d, 2), "step 2 after fix")) return;
+  ok("the invalid flag is cleared once the value is valid",
+     !consumption.hasAttribute("aria-invalid"), consumption.getAttribute("aria-invalid"));
+}
+
+// ------------------------------------------- the results dashboard, read aloud
+async function testResultsDashboard() {
+  const doc = await load("../index.html?lang=en");
+  if (!await waitFor(doc, (d) => d.getElementById("country").options.length > 0, "country list")) return;
+  const win = frame.contentWindow;
+  for (let n = 1; n <= 3; n++) {
+    doc.getElementById("nextBtn").click();
+    if (!await waitFor(doc, (d) => stepShown(d, n + 1), "step " + (n + 1))) return;
+  }
+  if (!await waitFor(doc, (d) => !!win.Chart.getChart(d.getElementById("chartMonthly")), "charts")) return;
+
+  ok("focus lands on the results heading",
+     doc.activeElement === doc.querySelector('.step[data-step="4"] h2'),
+     "focus is on " + (doc.activeElement && (doc.activeElement.id || doc.activeElement.tagName)));
+
+  testStructure(doc, "../index.html results");
+
+  // The extras row is a set of related controls, and its purpose is in a separate line of
+  // text — that has to be tied to the group or the checkboxes read as three loose chips.
+  const group = doc.querySelector(".scenario-toggles");
+  ok("the extras toggles form a labelled group",
+     group.getAttribute("role") === "group" && !!accName(doc, group),
+     `role=${group.getAttribute("role")} name=${accName(doc, group)}`);
+
+  // Flipping an extra rewrites the whole dashboard with no navigation. A reader has to be
+  // told something changed.
+  const summary = doc.getElementById("scenarioSummary");
+  ok("the scenario summary is a live region",
+     summary.getAttribute("role") === "status" || !!summary.getAttribute("aria-live"),
+     `role=${summary.getAttribute("role")}`);
+
+  const before = summary.textContent.trim();
+  const headlineBefore = doc.getElementById("results-body").textContent;
+  const hp = doc.getElementById("resultHp");
+  hp.click();
+  await sleep(400);
+  ok("switching an extra on recomputes the dashboard",
+     doc.getElementById("results-body").textContent !== headlineBefore, "unchanged");
+  ok("the live region's text actually changes with it",
+     summary.textContent.trim() !== before, `still "${before}"`);
+  ok("the live region is not left empty", summary.textContent.trim().length > 0, "empty");
+
+  // The excluded-cost warning is the one thing a reader must not miss next to a money figure.
+  const notice = doc.getElementById("costNotice");
+  ok("the excluded-cost notice appears when an extra is on", !notice.hidden, "still hidden");
+  ok("the notice names the extra that is on", /heat pump/i.test(notice.textContent), notice.textContent.trim());
+
+  // Every figure a chart encodes is also written out as text — that is what makes hiding the
+  // canvases from a reader defensible rather than a loss.
+  const text = doc.querySelector('.step[data-step="4"]').textContent;
+  ok("the dashboard states its numbers in text, not only in charts",
+     /kWh/.test(text) && /%/.test(text), "no kWh or percentage figures found");
+  ok("nothing on the dashboard reads NaN or undefined",
+     !/\b(NaN|undefined)\b/.test(text), "found one");
+
+  hp.click();
+  await sleep(400);
+  ok("switching it off again hides the notice", doc.getElementById("costNotice").hidden, "still shown");
+}
+
+// ------------------------------------------------------------ other pages
+async function testOtherPages() {
+  const meth = await load("../methodology.html?lang=en");
+  if (!await waitFor(meth, (d) => d.readyState === "complete", "methodology")) return;
+  testStructure(meth, "../methodology.html");
+
+  // Comparison mode, reached the way it is meant to be reached.
+  const wiz = await load("../index.html?lang=en");
+  if (!await waitFor(wiz, (d) => d.getElementById("country").options.length > 0, "country list")) return;
+  for (let n = 1; n <= 3; n++) {
+    wiz.getElementById("nextBtn").click();
+    if (!await waitFor(wiz, (d) => stepShown(d, n + 1), "step " + (n + 1))) return;
+  }
+  const arrived = new Promise((resolve) => {
+    frame.addEventListener("load", function once() {
+      frame.removeEventListener("load", once);
+      resolve(frame.contentDocument);
+    });
+  });
+  wiz.getElementById("compareBtn").click();
+  const doc = await arrived;
+  if (!await waitFor(doc, (d) => !!d.getElementById("chartMonthly-b"), "comparison columns")) return;
+  await sleep(300);
+  testStructure(doc, "../compare.html");
+
+  // The two columns must be distinguishable by name, not only by position on screen.
+  const heads = [...doc.querySelectorAll(".compare-col > h2")].map((h) => h.textContent.trim());
+  ok("../compare.html: the two columns have distinct headings",
+     heads.length === 2 && heads[0] !== heads[1], heads.join(" / "));
+
+  // Duplicate ids break every label-for and aria-labelledby that points at them, which is
+  // the specific risk in a page that renders one template twice.
+  const ids = [...doc.querySelectorAll("[id]")].map((el) => el.id);
+  const dupes = [...new Set(ids.filter((id, i) => ids.indexOf(id) !== i))];
+  ok("../compare.html: no duplicate ids across the two columns", dupes.length === 0, dupes.join(", "));
+}
+
+(async () => {
+  try {
+    await testWizardFocus();
+    await testResultsDashboard();
+    await testOtherPages();
+  } catch (e) {
+    results.push("FAIL threw: " + (e && e.stack || e));
+  }
+  const fails = results.filter((r) => r.startsWith("FAIL")).length;
+  document.getElementById("out").textContent =
+    results.join("\n") + "\n\n" + (fails ? fails + " FAILURES" : "ALL PASS (" + results.length + ")");
+})();
+</script>
+</body>
+</html>
