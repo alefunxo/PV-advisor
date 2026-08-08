@@ -4,23 +4,47 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title data-i18n="compare.title">Compare two systems — Solar Advisor</title>
+  <meta name="description" content="Put two solar and battery configurations for the same house side by side, one variable at a time." />
+  <meta name="theme-color" content="#0e1a20" />
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body class="compare-mode">
+  <div class="rail" aria-hidden="true"><span data-i18n="rail.caption">Solar · Battery · Screening</span></div>
+
+  <header class="page-header">
+    <div class="wrap">
+      <div class="masthead-nav">
+        <a class="brand" href="index.html">
+          <svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+            <rect x="2" y="15" width="28" height="11" rx="5.5" />
+            <path d="M9.5 15 18 4.5l5.2 3.1L20.3 15" />
+            <path class="mark-cross" d="M24 18.1v5.2M21.4 20.7h5.2" />
+          </svg>
+          <span class="brand-text">
+            <span class="brand-name" data-i18n="brand.name">Solar Advisor</span>
+            <span class="brand-tag" data-i18n="brand.tag">PV · Storage · Electrification</span>
+          </span>
+        </a>
+        <nav class="site-nav">
+          <a href="methodology.html" data-i18n="nav.method">How this works</a>
+          <select id="langSelect" class="lang-picker" aria-label="Language"
+                  data-i18n-attr="aria-label:nav.language"></select>
+        </nav>
+      </div>
+
+      <div class="masthead-hero">
+        <h1 data-i18n="compare.h1">Compare two systems</h1>
+        <p class="subtitle" data-i18n="compare.subtitle">
+          One house, two kits. Set the house up once, then put any two combinations of panels,
+          battery and electric extras side by side.
+        </p>
+        <p class="mode-switch"><a href="index.html" data-i18n="compare.backLink">← Back to the step-by-step version</a></p>
+      </div>
+    </div>
+  </header>
+
   <main>
-    <header class="page-header">
-      <nav class="site-nav">
-        <a href="methodology.html" data-i18n="nav.method">How this works</a>
-        <select id="langSelect" class="lang-picker" aria-label="Language"
-                data-i18n-attr="aria-label:nav.language"></select>
-      </nav>
-      <h1 data-i18n="compare.h1">Compare two systems</h1>
-      <p class="subtitle" data-i18n="compare.subtitle">
-        One house, two kits. Set the house up once, then put any two combinations of panels,
-        battery and electric extras side by side.
-      </p>
-      <p class="mode-switch"><a href="index.html" data-i18n="compare.backLink">← Back to the step-by-step version</a></p>
-    </header>
 
     <!-- Shown when the page is opened directly rather than from the last step of the wizard.
          A locked house needs a house to lock, so there is nothing sensible to show without
@@ -155,7 +179,10 @@
       <div id="assumptions-body"></div>
     </details>
 
-    <footer class="page-footer">
+  </main>
+
+  <footer class="page-footer">
+    <div class="wrap">
       <p data-i18n-html="footer.credit">
         Sunlight data from <a href="https://re.jrc.ec.europa.eu/pvg_tools/en/">PVGIS</a> (European
         Commission JRC). Place names from <a href="https://www.geonames.org/">GeoNames</a>
@@ -168,8 +195,8 @@
         <a href="https://gitlab.hevs.ch/ted/screen_project">gitlab.hevs.ch/ted/screen_project</a>
         and will be open sourced shortly.
       </p>
-    </footer>
-  </main>
+    </div>
+  </footer>
 
   <script src="js/vendor/chart.umd.js"></script>
   <script src="js/i18n.js"></script>

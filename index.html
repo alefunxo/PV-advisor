@@ -8,24 +8,47 @@
        js/i18n/en.json holds the same strings, and the smoke suite asserts the two agree so
        they cannot quietly drift. -->
   <title data-i18n="index.title">Solar Advisor — is PV worth it for your home?</title>
+  <meta name="description" content="A quick, transparent screening estimate for whether solar — with or without a battery — is worth it for your home, anywhere in Europe." />
+  <meta name="theme-color" content="#0e1a20" />
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-  <main>
-    <header class="page-header">
-      <!-- The method belongs in the header, not the footer: being legible about how the
-           numbers are made is the main thing this tool has over an installer's spreadsheet. -->
-      <nav class="site-nav">
-        <a href="methodology.html" data-i18n="nav.method">How this works</a>
-        <select id="langSelect" class="lang-picker" aria-label="Language"
-                data-i18n-attr="aria-label:nav.language"></select>
-      </nav>
-      <h1 data-i18n="index.h1">Is solar worth it for your home?</h1>
-      <p class="subtitle" data-i18n="index.subtitle">
-        A quick screening estimate for anywhere in Europe. Three short steps, no sign-up.
-      </p>
-    </header>
+  <div class="rail" aria-hidden="true"><span data-i18n="rail.caption">Solar · Battery · Screening</span></div>
 
+  <header class="page-header">
+    <div class="wrap">
+      <div class="masthead-nav">
+        <a class="brand" href="index.html">
+          <svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+            <rect x="2" y="15" width="28" height="11" rx="5.5" />
+            <path d="M9.5 15 18 4.5l5.2 3.1L20.3 15" />
+            <path class="mark-cross" d="M24 18.1v5.2M21.4 20.7h5.2" />
+          </svg>
+          <span class="brand-text">
+            <span class="brand-name" data-i18n="brand.name">Solar Advisor</span>
+            <span class="brand-tag" data-i18n="brand.tag">PV · Storage · Electrification</span>
+          </span>
+        </a>
+        <!-- The method belongs in the header, not the footer: being legible about how the
+             numbers are made is the main thing this tool has over an installer's spreadsheet. -->
+        <nav class="site-nav">
+          <a href="methodology.html" data-i18n="nav.method">How this works</a>
+          <select id="langSelect" class="lang-picker" aria-label="Language"
+                  data-i18n-attr="aria-label:nav.language"></select>
+        </nav>
+      </div>
+
+      <div class="masthead-hero">
+        <h1 data-i18n="index.h1">Is solar worth it for your home?</h1>
+        <p class="subtitle" data-i18n="index.subtitle">
+          A quick screening estimate for anywhere in Europe. Three short steps, no sign-up.
+        </p>
+      </div>
+    </div>
+  </header>
+
+  <main>
     <ol class="steps" id="stepper">
       <li data-step="1"><span class="dot">1</span> <span data-i18n="steps.home">Your home</span></li>
       <li data-step="2"><span class="dot">2</span> <span data-i18n="steps.costs">Costs &amp; tariffs</span></li>
@@ -434,8 +457,10 @@
       </nav>
       <p class="error" id="formError" role="alert" hidden></p>
     </form>
+  </main>
 
-    <footer class="page-footer">
+  <footer class="page-footer">
+    <div class="wrap">
       <p data-i18n-html="footer.credit">
         Sunlight data from <a href="https://re.jrc.ec.europa.eu/pvg_tools/en/">PVGIS</a> (European
         Commission JRC). Place names from <a href="https://www.geonames.org/">GeoNames</a>
@@ -448,8 +473,8 @@
         <a href="https://gitlab.hevs.ch/ted/screen_project">gitlab.hevs.ch/ted/screen_project</a>
         and will be open sourced shortly.
       </p>
-    </footer>
-  </main>
+    </div>
+  </footer>
 
   <!-- Vendored rather than loaded from a CDN: the deployed page stays self-contained, works
        offline, and the headless smoke tests need no network. Chart.js v4.4.7, MIT. -->

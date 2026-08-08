@@ -4,6 +4,9 @@
 
   "nav.method": "How this works",
   "nav.language": "Language",
+  "brand.name": "Solar Advisor",
+  "brand.tag": "PV · Storage · Electrification",
+  "rail.caption": "Solar · Battery · Screening",
   "nav.back": "Back",
   "nav.restart": "Start again",
   "nav.continue": "Continue",

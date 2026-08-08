@@ -4,22 +4,46 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title data-i18n="method.title">How this works — Solar Advisor</title>
+  <meta name="description" content="The whole method behind the solar advisor, written out: data sources, formulas, dispatch rule and known limitations." />
+  <meta name="theme-color" content="#0e1a20" />
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body class="doc-page">
+  <div class="rail" aria-hidden="true"><span data-i18n="rail.caption">Solar · Battery · Screening</span></div>
+
+  <header class="page-header">
+    <div class="wrap">
+      <div class="masthead-nav">
+        <a class="brand" href="index.html">
+          <svg class="mark" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+            <rect x="2" y="15" width="28" height="11" rx="5.5" />
+            <path d="M9.5 15 18 4.5l5.2 3.1L20.3 15" />
+            <path class="mark-cross" d="M24 18.1v5.2M21.4 20.7h5.2" />
+          </svg>
+          <span class="brand-text">
+            <span class="brand-name" data-i18n="brand.name">Solar Advisor</span>
+            <span class="brand-tag" data-i18n="brand.tag">PV · Storage · Electrification</span>
+          </span>
+        </a>
+        <nav class="site-nav">
+          <a href="index.html" data-i18n="method.navBack">← Back to the advisor</a>
+          <select id="langSelect" class="lang-picker" aria-label="Language"
+                  data-i18n-attr="aria-label:nav.language"></select>
+        </nav>
+      </div>
+
+      <div class="masthead-hero">
+        <h1 data-i18n="method.h1">How this works</h1>
+        <p class="subtitle" data-i18n="method.subtitle">
+          The whole method, written out: where the numbers come from, what is calculated from
+          what, and where the method stops being trustworthy.
+        </p>
+      </div>
+    </div>
+  </header>
+
   <main>
-    <header class="page-header">
-      <nav class="site-nav">
-        <a href="index.html" data-i18n="method.navBack">← Back to the advisor</a>
-        <select id="langSelect" class="lang-picker" aria-label="Language"
-                data-i18n-attr="aria-label:nav.language"></select>
-      </nav>
-      <h1 data-i18n="method.h1">How this works</h1>
-      <p class="subtitle" data-i18n="method.subtitle">
-        The whole method, written out: where the numbers come from, what is calculated from
-        what, and where the method stops being trustworthy.
-      </p>
-    </header>
 
     <!-- The point of this page is trust, not compliance. This tool competes with installer
          spreadsheets, and being legible about the method is the main thing it has to offer,
@@ -472,8 +496,10 @@
         <code>js/calc/economics.js</code> (NPV, payback, the incremental battery case).
       </p>
     </section>
+  </main>
 
-    <footer class="page-footer">
+  <footer class="page-footer">
+    <div class="wrap">
       <p data-i18n-html="footer.credit">
         Sunlight data from <a href="https://re.jrc.ec.europa.eu/pvg_tools/en/">PVGIS</a> (European
         Commission JRC). Place names from <a href="https://www.geonames.org/">GeoNames</a>
@@ -486,8 +512,8 @@
         <a href="https://gitlab.hevs.ch/ted/screen_project">gitlab.hevs.ch/ted/screen_project</a>
         and will be open sourced shortly.
       </p>
-    </footer>
-  </main>
+    </div>
+  </footer>
 
   <script src="js/i18n.js"></script>
   <script>
